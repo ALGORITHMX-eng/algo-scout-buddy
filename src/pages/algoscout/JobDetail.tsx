@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, ExternalLink, FileText, MapPin, X } from "lucide-react";
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ScorePill, StatusBadge } from "@/components/algoscout/ScorePill";
+import { CoverLetterDoc } from "@/components/algoscout/CoverLetterDoc";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DEFAULT_COVER_LETTER_PDF_URL,
   DEFAULT_RESUME_PDF_URL,
