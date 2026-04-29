@@ -1,5 +1,12 @@
 export type JobStatus = "Pending" | "Approved" | "Rejected";
 
+export type ScoreBreakdown = {
+  skills: number; // 0-10
+  salary: number;
+  location: number;
+  culture: number;
+};
+
 export type Job = {
   id: string;
   company: string;
@@ -15,6 +22,45 @@ export type Job = {
   location: string;
   resumePdfUrl?: string;
   coverLetterPdfUrl?: string;
+  breakdown?: ScoreBreakdown;
+};
+
+// Derive a deterministic breakdown from the overall score so existing seed data
+// gets a sensible radar without manual authoring.
+export const deriveBreakdown = (job: Job): ScoreBreakdown => {
+  if (job.breakdown) return job.breakdown;
+  const s = job.score;
+  // simple deterministic spread around the score
+  const seed = job.id.charCodeAt(job.id.length - 1);
+  const j = (n: number) => Math.max(0, Math.min(10, +(s + n).toFixed(1)));
+  return {
+    skills: j(((seed % 7) - 3) * 0.15 + 0.4),
+    salary: j(((seed % 5) - 2) * 0.25 - 0.2),
+    location: j(((seed % 9) - 4) * 0.2),
+    culture: j(((seed % 11) - 5) * 0.15 + 0.2),
+  };
+};
+
+// Mock 7-day trend used by dashboard sparklines.
+export const getWeeklyTrends = (jobs: Job[]) => {
+  const days = 7;
+  const today = new Date();
+  const buckets: Record<string, { found: number; approved: number; rejected: number; pending: number }> = {};
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    buckets[d.toISOString().slice(0, 10)] = { found: 0, approved: 0, rejected: 0, pending: 0 };
+  }
+  // distribute jobs across days using id hash (stable, no real timestamps needed)
+  const keys = Object.keys(buckets);
+  jobs.forEach((j, idx) => {
+    const k = keys[(j.id.charCodeAt(j.id.length - 1) + idx) % keys.length];
+    buckets[k].found += 1;
+    if (j.status === "Approved") buckets[k].approved += 1;
+    else if (j.status === "Rejected") buckets[k].rejected += 1;
+    else buckets[k].pending += 1;
+  });
+  return keys.map((k) => ({ day: k.slice(5), ...buckets[k] }));
 };
 
 export const DEFAULT_RESUME_PDF_URL =

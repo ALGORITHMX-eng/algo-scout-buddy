@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, ExternalLink, FileText, MapPin, X } from "lucide-react";
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ScorePill, StatusBadge } from "@/components/algoscout/ScorePill";
+import { CoverLetterDoc } from "@/components/algoscout/CoverLetterDoc";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  DEFAULT_COVER_LETTER_PDF_URL,
   DEFAULT_RESUME_PDF_URL,
   Job,
   JobStatus,
@@ -73,7 +74,7 @@ export default function AlgoJobDetail() {
                 <StatusBadge status={job.status} />
               </div>
             </div>
-            <ScorePill score={job.score} size="lg" />
+            <ScorePill score={job.score} size="lg" job={job} />
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2">
@@ -108,7 +109,7 @@ export default function AlgoJobDetail() {
 
           <DocumentsViewer
             resumeUrl={job.resumePdfUrl ?? DEFAULT_RESUME_PDF_URL}
-            coverLetterUrl={job.coverLetterPdfUrl ?? DEFAULT_COVER_LETTER_PDF_URL}
+            job={job}
           />
 
           <Section title="Tailored resume notes">
@@ -127,14 +128,18 @@ type DocTab = "resume" | "cover";
 
 function DocumentsViewer({
   resumeUrl,
-  coverLetterUrl,
+  job,
 }: {
   resumeUrl: string;
-  coverLetterUrl: string;
+  job: Job;
 }) {
   const [tab, setTab] = useState<DocTab>("resume");
-  const activeUrl = tab === "resume" ? resumeUrl : coverLetterUrl;
-  const activeLabel = tab === "resume" ? "Tailored Resume" : "Cover Letter";
+  const [pdfLoading, setPdfLoading] = useState(true);
+
+  // Reset loading state when switching back to resume
+  useEffect(() => {
+    if (tab === "resume") setPdfLoading(true);
+  }, [tab, resumeUrl]);
 
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-card">
@@ -142,14 +147,16 @@ function DocumentsViewer({
         <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Documents
         </h2>
-        <a
-          href={activeUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-foreground"
-        >
-          Open {activeLabel} <ExternalLink className="h-3 w-3" />
-        </a>
+        {tab === "resume" && (
+          <a
+            href={resumeUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-foreground"
+          >
+            Open Resume <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-border px-3 pt-3">
@@ -176,32 +183,60 @@ function DocumentsViewer({
         })}
       </div>
 
-      <div className="bg-background p-3">
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <object
-            key={activeUrl}
-            data={`${activeUrl}#toolbar=1&view=FitH`}
-            type="application/pdf"
-            className="h-[640px] w-full"
-            aria-label={activeLabel}
-          >
-            <div className="flex h-[640px] flex-col items-center justify-center gap-3 p-6 text-center">
-              <FileText className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                Can't display the PDF inline in this browser.
-              </p>
-              <a
-                href={activeUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3.5 py-2 text-sm font-medium text-foreground hover:bg-muted"
-              >
-                Download {activeLabel} <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            </div>
-          </object>
+      {tab === "resume" ? (
+        <div className="bg-background p-3">
+          <div className="relative overflow-hidden rounded-lg border border-border bg-card">
+            {pdfLoading && (
+              <div className="absolute inset-0 z-10 space-y-3 bg-card p-6">
+                <Skeleton className="h-6 w-1/3" />
+                <Skeleton className="h-4 w-2/3" />
+                <div className="pt-4 space-y-2">
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-11/12" />
+                  <Skeleton className="h-3 w-10/12" />
+                  <Skeleton className="h-3 w-9/12" />
+                </div>
+                <div className="pt-4 space-y-2">
+                  <Skeleton className="h-4 w-1/4" />
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-11/12" />
+                  <Skeleton className="h-3 w-10/12" />
+                </div>
+              </div>
+            )}
+            <object
+              key={resumeUrl}
+              data={`${resumeUrl}#toolbar=1&view=FitH`}
+              type="application/pdf"
+              className="h-[640px] w-full"
+              aria-label="Tailored Resume"
+              onLoad={() => setPdfLoading(false)}
+            >
+              <div className="flex h-[640px] flex-col items-center justify-center gap-3 p-6 text-center">
+                <FileText className="h-8 w-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Can't display the PDF inline in this browser.
+                </p>
+                <a
+                  href={resumeUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3.5 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                >
+                  Download Resume <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            </object>
+          </div>
         </div>
-      </div>
+      ) : (
+        <CoverLetterDoc
+          body={job.coverLetter}
+          company={job.company}
+          role={job.role}
+          date={job.dateFound}
+        />
+      )}
     </section>
   );
 }
