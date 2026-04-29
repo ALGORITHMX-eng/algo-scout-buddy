@@ -6,7 +6,6 @@ import { ScorePill, StatusBadge } from "@/components/algoscout/ScorePill";
 import { CoverLetterDoc } from "@/components/algoscout/CoverLetterDoc";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  DEFAULT_COVER_LETTER_PDF_URL,
   DEFAULT_RESUME_PDF_URL,
   Job,
   JobStatus,
