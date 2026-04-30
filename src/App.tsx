@@ -8,6 +8,7 @@ import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import AlgoDashboard from "./pages/algoscout/Dashboard.tsx";
 import AlgoJobDetail from "./pages/algoscout/JobDetail.tsx";
+import AlgoAddJob from "./pages/algoscout/AddJob.tsx";
 
 const queryClient = new QueryClient();
 
@@ -21,6 +22,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/algoscout" element={<AlgoDashboard />} />
+            <Route path="/algoscout/add" element={<AlgoAddJob />} />
             <Route path="/algoscout/job/:id" element={<AlgoJobDetail />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
