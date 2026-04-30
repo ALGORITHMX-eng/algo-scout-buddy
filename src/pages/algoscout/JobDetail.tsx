@@ -109,6 +109,7 @@ export default function AlgoJobDetail() {
         </div>
 
         <div className="mt-5 grid gap-4">
+          <StatusTimeline jobId={job.id} dateFound={job.dateFound} externalData={timelinePatch} />
           <Section title="Why this score">{job.reason}</Section>
           <Section title="Job description">
             <p className="whitespace-pre-line">{job.description}</p>
