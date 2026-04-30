@@ -219,6 +219,18 @@ export const updateJobStatus = (id: string, status: JobStatus): Job[] => {
   return jobs;
 };
 
+export const addJob = (job: Omit<Job, "id" | "dateFound" | "status"> & Partial<Pick<Job, "status">>): Job => {
+  const jobs = loadJobs();
+  const newJob: Job = {
+    id: `j-${Date.now().toString(36)}`,
+    dateFound: new Date().toISOString().slice(0, 10),
+    status: job.status ?? "Pending",
+    ...job,
+  } as Job;
+  saveJobs([newJob, ...jobs]);
+  return newJob;
+};
+
 export const getReadNotifIds = (): string[] => {
   try {
     return JSON.parse(localStorage.getItem(READ_KEY) || "[]");

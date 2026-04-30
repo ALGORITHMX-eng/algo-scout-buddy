@@ -1,4 +1,4 @@
-import { Bell, Radar } from "lucide-react";
+import { Bell, Radar, Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { Job, getReadNotifIds, loadJobs, markNotifsRead, scoreColor } from "@/lib/algoscout-data";
@@ -47,6 +47,12 @@ export const AlgoNavbar = () => {
         </Link>
 
         <div className="flex items-center gap-2">
+          <Link
+            to="/algoscout/add"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add job
+          </Link>
           <ThemeToggle />
           <div ref={ref} className="relative">
             <button
