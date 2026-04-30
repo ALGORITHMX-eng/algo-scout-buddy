@@ -4,6 +4,7 @@ import { ArrowLeft, Check, ExternalLink, FileText, MapPin, X } from "lucide-reac
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ScorePill, StatusBadge } from "@/components/algoscout/ScorePill";
 import { CoverLetterDoc } from "@/components/algoscout/CoverLetterDoc";
+import { StatusTimeline } from "@/components/algoscout/StatusTimeline";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DEFAULT_RESUME_PDF_URL,
@@ -12,6 +13,7 @@ import {
   loadJobs,
   updateJobStatus,
 } from "@/lib/algoscout-data";
+import { setStage, TimelineData } from "@/lib/algoscout-timeline";
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <section className="rounded-xl border border-border bg-card p-5">
@@ -24,6 +26,7 @@ export default function AlgoJobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [job, setJob] = useState<Job | null>(null);
+  const [timelinePatch, setTimelinePatch] = useState<TimelineData | undefined>();
 
   useEffect(() => {
     const j = loadJobs().find((x) => x.id === id) || null;
@@ -47,6 +50,10 @@ export default function AlgoJobDetail() {
   const setStatus = (s: JobStatus) => {
     updateJobStatus(job.id, s);
     setJob({ ...job, status: s });
+    if (s === "Approved" || s === "Rejected") {
+      const patch = setStage(job.id, s);
+      setTimelinePatch({ ...patch });
+    }
   };
 
   return (
