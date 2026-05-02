@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ProfileQA, PendingQuestion, loadQAs, saveQA, deleteQA, loadPending, removePending } from "@/lib/algoscout-profile";
-import { AlertTriangle, Check, Clock, Edit2, MessageCircleQuestion, Save, Trash2, User, X } from "lucide-react";
+import { AlertTriangle, Check, Clock, Edit2, MessageCircleQuestion, Save, Search, Trash2, User, X } from "lucide-react";
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
@@ -15,6 +16,13 @@ export default function ProfilePage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activePending, setActivePending] = useState<PendingQuestion | null>(null);
   const [answerText, setAnswerText] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredQas = qas.filter((qa) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return qa.question.toLowerCase().includes(q) || qa.answer.toLowerCase().includes(q);
+  });
 
   useEffect(() => {
     setQas(loadQAs());
@@ -96,6 +104,17 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {/* ---- Search ---- */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search saved answers…"
+            className="pl-9 bg-card border-border"
+          />
+        </div>
+
         {/* ---- Pending alerts ---- */}
         {pending.length > 0 && (
           <section className="space-y-3">
@@ -153,8 +172,13 @@ export default function ProfilePage() {
               No saved answers yet. Answer an alert above to get started.
             </div>
           )}
+          {qas.length > 0 && filteredQas.length === 0 && (
+            <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+              No answers match "{searchQuery}"
+            </div>
+          )}
           <div className="space-y-2">
-            {qas.map((qa) => (
+            {filteredQas.map((qa) => (
               <div key={qa.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
                 <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{qa.question}</p>
                 {editingId === qa.id ? (
