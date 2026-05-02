@@ -172,8 +172,13 @@ export default function ProfilePage() {
               No saved answers yet. Answer an alert above to get started.
             </div>
           )}
+          {qas.length > 0 && filteredQas.length === 0 && (
+            <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+              No answers match "{searchQuery}"
+            </div>
+          )}
           <div className="space-y-2">
-            {qas.map((qa) => (
+            {filteredQas.map((qa) => (
               <div key={qa.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
                 <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{qa.question}</p>
                 {editingId === qa.id ? (
