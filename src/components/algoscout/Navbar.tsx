@@ -1,4 +1,4 @@
-import { Bell, Radar, Plus, User } from "lucide-react";
+import { Bell, Bot, Mic, Radar, Plus, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { Job, getReadNotifIds, loadJobs, markNotifsRead, scoreColor } from "@/lib/algoscout-data";
@@ -33,6 +33,8 @@ export const AlgoNavbar = () => {
     }
   };
 
+  const iconBtn = "inline-flex items-center justify-center h-8 w-8 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25";
+
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
@@ -47,11 +49,13 @@ export const AlgoNavbar = () => {
         </Link>
 
         <div className="flex items-center gap-2">
-          <Link
-            to="/algoscout/profile"
-            className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25"
-            aria-label="Form Memory"
-          >
+          <Link to="/algoscout/chat" className={iconBtn} aria-label="AI Chat">
+            <Bot className="h-3.5 w-3.5" />
+          </Link>
+          <Link to="/algoscout/interview" className={iconBtn} aria-label="Interview Prep">
+            <Mic className="h-3.5 w-3.5" />
+          </Link>
+          <Link to="/algoscout/profile" className={iconBtn} aria-label="Form Memory">
             <User className="h-3.5 w-3.5" />
           </Link>
           <Link
@@ -90,21 +94,14 @@ export const AlgoNavbar = () => {
                     return (
                       <button
                         key={j.id}
-                        onClick={() => {
-                          setOpen(false);
-                          navigate(`/algoscout/job/${j.id}`);
-                        }}
+                        onClick={() => { setOpen(false); navigate(`/algoscout/job/${j.id}`); }}
                         className="flex w-full items-center gap-3 border-b border-border/70 px-4 py-3 text-left transition hover:bg-muted"
                       >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[12px] font-semibold ${
-                            c === "green"
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                              : c === "yellow"
-                              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                              : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                          }`}
-                        >
+                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[12px] font-semibold ${
+                          c === "green" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                          : c === "yellow" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                          : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                        }`}>
                           {j.score.toFixed(1)}
                         </span>
                         <div className="min-w-0 flex-1">
