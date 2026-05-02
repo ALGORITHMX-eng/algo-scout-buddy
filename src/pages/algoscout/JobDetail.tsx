@@ -5,6 +5,8 @@ import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ScorePill, StatusBadge } from "@/components/algoscout/ScorePill";
 import { CoverLetterDoc } from "@/components/algoscout/CoverLetterDoc";
 import { StatusTimeline } from "@/components/algoscout/StatusTimeline";
+import { NotesPanel } from "@/components/algoscout/NotesPanel";
+import { TagEditor } from "@/components/algoscout/TagEditor";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DEFAULT_RESUME_PDF_URL,
@@ -110,6 +112,13 @@ export default function AlgoJobDetail() {
 
         <div className="mt-5 grid gap-4">
           <StatusTimeline jobId={job.id} dateFound={job.dateFound} externalData={timelinePatch} />
+
+          <section className="rounded-xl border border-border bg-card p-5">
+            <TagEditor jobId={job.id} />
+          </section>
+
+          <NotesPanel jobId={job.id} />
+
           <Section title="Why this score">{job.reason}</Section>
           <Section title="Job description">
             <p className="whitespace-pre-line">{job.description}</p>
