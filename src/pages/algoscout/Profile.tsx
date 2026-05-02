@@ -104,6 +104,17 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {/* ---- Search ---- */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search saved answers…"
+            className="pl-9 bg-card border-border"
+          />
+        </div>
+
         {/* ---- Pending alerts ---- */}
         {pending.length > 0 && (
           <section className="space-y-3">
