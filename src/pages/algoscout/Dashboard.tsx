@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, Check, X, Inbox, Clock, CheckCircle2, XCircle, BellRing, Loader2 } from "lucide-react";
+import { ExternalLink, Check, X, Inbox, Clock, CheckCircle2, XCircle, BellRing, Loader2, Archive, Tag, Filter } from "lucide-react";
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ScorePill, StatusBadge } from "@/components/algoscout/ScorePill";
 import { Sparkline } from "@/components/algoscout/Sparkline";
 import { ProgressRing } from "@/components/algoscout/ProgressRing";
 import { Job, JobStatus, loadJobs, updateJobStatus, getWeeklyTrends } from "@/lib/algoscout-data";
+import { getAllUniqueTags, getTagsForJob } from "@/lib/algoscout-tags";
 import { enablePushNotifications } from "@/lib/push-notifications";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -13,17 +14,9 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const FILTERS: ("All" | JobStatus)[] = ["All", "Pending", "Approved", "Rejected"];
 
 const StatCard = ({
-  label,
-  value,
-  icon: Icon,
-  tone,
-  trend,
+  label, value, icon: Icon, tone, trend,
 }: {
-  label: string;
-  value: number;
-  icon: any;
-  tone: "muted" | "amber" | "emerald" | "rose";
-  trend: number[];
+  label: string; value: number; icon: any; tone: "muted" | "amber" | "emerald" | "rose"; trend: number[];
 }) => {
   const map = {
     muted: "bg-muted text-muted-foreground ring-border",
@@ -51,11 +44,15 @@ const StatCard = ({
 export default function AlgoDashboard() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const isMobile = useIsMobile();
 
   useEffect(() => {
     setJobs(loadJobs());
   }, []);
+
+  const allTags = useMemo(() => getAllUniqueTags(), [jobs]);
 
   const stats = useMemo(
     () => ({
@@ -80,10 +77,40 @@ export default function AlgoDashboard() {
 
   const reviewed = stats.approved + stats.rejected;
 
-  const visible = filter === "All" ? jobs : jobs.filter((j) => j.status === filter);
+  const visible = useMemo(() => {
+    let list = filter === "All" ? jobs : jobs.filter((j) => j.status === filter);
+    if (selectedTag) {
+      list = list.filter((j) => getTagsForJob(j.id).includes(selectedTag));
+    }
+    return list;
+  }, [jobs, filter, selectedTag]);
 
   const setStatus = (id: string, status: JobStatus) => {
     setJobs(updateJobStatus(id, status));
+  };
+
+  // Bulk actions
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selected.size === visible.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(visible.map((j) => j.id)));
+    }
+  };
+
+  const bulkAction = (status: JobStatus) => {
+    selected.forEach((id) => updateJobStatus(id, status));
+    setJobs(loadJobs());
+    toast.success(`${selected.size} job(s) set to ${status}`);
+    setSelected(new Set());
   };
 
   const [pushBusy, setPushBusy] = useState(false);
@@ -122,14 +149,7 @@ export default function AlgoDashboard() {
 
         {/* Weekly digest ring */}
         <div className="mb-5 flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-4">
-          <ProgressRing
-            value={reviewed}
-            total={stats.total}
-            size={84}
-            stroke={7}
-            label="Weekly review progress"
-            sublabel={`${reviewed} of ${stats.total} leads reviewed this week`}
-          />
+          <ProgressRing value={reviewed} total={stats.total} size={84} stroke={7} label="Weekly review progress" sublabel={`${reviewed} of ${stats.total} leads reviewed this week`} />
           <div className="hidden text-right sm:block">
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Still pending</div>
             <div className="font-display text-2xl font-semibold text-foreground">{stats.pending}</div>
@@ -143,9 +163,49 @@ export default function AlgoDashboard() {
           <StatCard label="Rejected" value={stats.rejected} icon={XCircle} tone="rose" trend={trendArrays.rejected} />
         </div>
 
+        {/* Tag filter */}
+        {allTags.length > 0 && (
+          <div className="mt-5 flex items-center gap-2 overflow-x-auto pb-1">
+            <Filter className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <button
+              onClick={() => setSelectedTag(null)}
+              className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition ${
+                !selectedTag ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              All tags
+            </button>
+            {allTags.map((t) => (
+              <button
+                key={t}
+                onClick={() => setSelectedTag(selectedTag === t ? null : t)}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition ${
+                  selectedTag === t ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="mt-8 overflow-hidden rounded-xl border border-border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <div className="font-display text-sm font-semibold text-foreground">Job leads</div>
+            <div className="flex items-center gap-3">
+              <div className="font-display text-sm font-semibold text-foreground">Job leads</div>
+              {selected.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{selected.size} selected</span>
+                  <button onClick={() => bulkAction("Approved")} className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25">
+                    <Check className="h-3 w-3" /> Approve
+                  </button>
+                  <button onClick={() => bulkAction("Rejected")} className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/30 hover:bg-rose-500/25">
+                    <X className="h-3 w-3" /> Reject
+                  </button>
+                  <button onClick={() => setSelected(new Set())} className="text-[11px] text-muted-foreground hover:text-foreground">Clear</button>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-3">
               {isMobile && (
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -174,6 +234,14 @@ export default function AlgoDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr>
+                  <th className="px-4 py-3 text-left font-medium w-8">
+                    <input
+                      type="checkbox"
+                      checked={visible.length > 0 && selected.size === visible.length}
+                      onChange={selectAll}
+                      className="h-3.5 w-3.5 rounded border-border accent-emerald-600"
+                    />
+                  </th>
                   <th className="px-4 py-3 text-left font-medium">Company</th>
                   <th className="px-4 py-3 text-left font-medium">Role</th>
                   <th className="px-4 py-3 text-left font-medium">Score</th>
@@ -189,13 +257,15 @@ export default function AlgoDashboard() {
                     key={j.id}
                     job={j}
                     isMobile={isMobile}
+                    isSelected={selected.has(j.id)}
+                    onToggleSelect={() => toggleSelect(j.id)}
                     onApprove={() => setStatus(j.id, "Approved")}
                     onReject={() => setStatus(j.id, "Rejected")}
                   />
                 ))}
                 {visible.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
                       No jobs match this filter.
                     </td>
                   </tr>
@@ -209,75 +279,39 @@ export default function AlgoDashboard() {
   );
 }
 
-/** Job row with swipe-to-approve/reject on mobile and hover lift on desktop. */
 function JobRow({
-  job: j,
-  isMobile,
-  onApprove,
-  onReject,
+  job: j, isMobile, isSelected, onToggleSelect, onApprove, onReject,
 }: {
-  job: Job;
-  isMobile: boolean;
-  onApprove: () => void;
-  onReject: () => void;
+  job: Job; isMobile: boolean; isSelected: boolean; onToggleSelect: () => void; onApprove: () => void; onReject: () => void;
 }) {
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const startX = useState<{ x: number | null }>({ x: null })[0];
   const THRESHOLD = 70;
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    startX.x = e.touches[0].clientX;
-    setDragging(true);
-  };
-  const onTouchMove = (e: React.TouchEvent) => {
-    if (startX.x == null) return;
-    const delta = e.touches[0].clientX - startX.x;
-    setDx(Math.max(-140, Math.min(140, delta)));
-  };
-  const onTouchEnd = () => {
-    setDragging(false);
-    if (dx > THRESHOLD) onApprove();
-    else if (dx < -THRESHOLD) onReject();
-    setDx(0);
-    startX.x = null;
-  };
+  const onTouchStart = (e: React.TouchEvent) => { startX.x = e.touches[0].clientX; setDragging(true); };
+  const onTouchMove = (e: React.TouchEvent) => { if (startX.x == null) return; setDx(Math.max(-140, Math.min(140, e.touches[0].clientX - startX.x))); };
+  const onTouchEnd = () => { setDragging(false); if (dx > THRESHOLD) onApprove(); else if (dx < -THRESHOLD) onReject(); setDx(0); startX.x = null; };
 
-  const showApprove = dx > 12;
-  const showReject = dx < -12;
+  const tags = getTagsForJob(j.id);
 
   return (
     <tr className="relative border-t border-border/70">
-      <td colSpan={7} className="p-0">
+      <td colSpan={8} className="p-0">
         <div className="relative overflow-hidden">
           {isMobile && (
             <>
-              <div
-                className={`pointer-events-none absolute inset-y-0 left-0 flex items-center gap-2 bg-emerald-500/20 px-4 text-sm font-medium text-emerald-600 dark:text-emerald-400 transition-opacity ${
-                  showApprove ? "opacity-100" : "opacity-0"
-                }`}
-              >
+              <div className={`pointer-events-none absolute inset-y-0 left-0 flex items-center gap-2 bg-emerald-500/20 px-4 text-sm font-medium text-emerald-600 dark:text-emerald-400 transition-opacity ${dx > 12 ? "opacity-100" : "opacity-0"}`}>
                 <Check className="h-4 w-4" /> Approve
               </div>
-              <div
-                className={`pointer-events-none absolute inset-y-0 right-0 flex items-center gap-2 bg-rose-500/20 px-4 text-sm font-medium text-rose-600 dark:text-rose-400 transition-opacity ${
-                  showReject ? "opacity-100" : "opacity-0"
-                }`}
-              >
+              <div className={`pointer-events-none absolute inset-y-0 right-0 flex items-center gap-2 bg-rose-500/20 px-4 text-sm font-medium text-rose-600 dark:text-rose-400 transition-opacity ${dx < -12 ? "opacity-100" : "opacity-0"}`}>
                 Reject <X className="h-4 w-4" />
               </div>
             </>
           )}
           <div
-            className="bg-card transition-all duration-150 hover:-translate-y-px hover:bg-muted/40 hover:shadow-[0_4px_12px_-6px_hsl(var(--foreground)/0.18)]"
-            style={
-              isMobile
-                ? {
-                    transform: `translateX(${dx}px)`,
-                    transition: dragging ? "none" : "transform 200ms ease",
-                  }
-                : undefined
-            }
+            className={`transition-all duration-150 hover:-translate-y-px hover:bg-muted/40 hover:shadow-[0_4px_12px_-6px_hsl(var(--foreground)/0.18)] ${isSelected ? "bg-emerald-500/5" : "bg-card"}`}
+            style={isMobile ? { transform: `translateX(${dx}px)`, transition: dragging ? "none" : "transform 200ms ease" } : undefined}
             onTouchStart={isMobile ? onTouchStart : undefined}
             onTouchMove={isMobile ? onTouchMove : undefined}
             onTouchEnd={isMobile ? onTouchEnd : undefined}
@@ -285,51 +319,44 @@ function JobRow({
             <table className="w-full text-sm">
               <tbody>
                 <tr>
+                  <td className="px-4 py-3 w-8">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={onToggleSelect}
+                      className="h-3.5 w-3.5 rounded border-border accent-emerald-600"
+                    />
+                  </td>
                   <td className="px-4 py-3">
-                    <Link
-                      to={`/algoscout/job/${j.id}`}
-                      className="font-medium text-foreground hover:text-emerald-600 dark:hover:text-emerald-400"
-                    >
+                    <Link to={`/algoscout/job/${j.id}`} className="font-medium text-foreground hover:text-emerald-600 dark:hover:text-emerald-400">
                       {j.company}
                     </Link>
+                    {tags.length > 0 && (
+                      <div className="flex gap-1 mt-0.5">
+                        {tags.slice(0, 2).map((t) => (
+                          <span key={t} className="inline-block rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] text-emerald-600 dark:text-emerald-400">{t}</span>
+                        ))}
+                        {tags.length > 2 && <span className="text-[9px] text-muted-foreground">+{tags.length - 2}</span>}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-foreground/80">
-                    <Link
-                      to={`/algoscout/job/${j.id}`}
-                      className="hover:text-emerald-600 dark:hover:text-emerald-400"
-                    >
-                      {j.role}
-                    </Link>
+                    <Link to={`/algoscout/job/${j.id}`} className="hover:text-emerald-600 dark:hover:text-emerald-400">{j.role}</Link>
                   </td>
-                  <td className="px-4 py-3">
-                    <ScorePill score={j.score} job={j} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={j.status} />
-                  </td>
+                  <td className="px-4 py-3"><ScorePill score={j.score} job={j} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={j.status} /></td>
                   <td className="px-4 py-3 text-muted-foreground">{j.dateFound}</td>
                   <td className="px-4 py-3">
-                    <a
-                      href={j.applyUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:underline"
-                    >
+                    <a href={j.applyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:underline">
                       Open <ExternalLink className="h-3 w-3" />
                     </a>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
-                      <button
-                        onClick={onApprove}
-                        className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2.5 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25"
-                      >
+                      <button onClick={onApprove} className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2.5 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25">
                         <Check className="h-3.5 w-3.5" /> Approve
                       </button>
-                      <button
-                        onClick={onReject}
-                        className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2.5 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/30 transition hover:bg-rose-500/25"
-                      >
+                      <button onClick={onReject} className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2.5 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/30 transition hover:bg-rose-500/25">
                         <X className="h-3.5 w-3.5" /> Reject
                       </button>
                     </div>
