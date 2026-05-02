@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ProfileQA, PendingQuestion, loadQAs, saveQA, deleteQA, loadPending, removePending } from "@/lib/algoscout-profile";
-import { AlertTriangle, Check, Clock, Edit2, MessageCircleQuestion, Save, Trash2, User, X } from "lucide-react";
+import { AlertTriangle, Check, Clock, Edit2, MessageCircleQuestion, Save, Search, Trash2, User, X } from "lucide-react";
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
@@ -15,6 +16,13 @@ export default function ProfilePage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activePending, setActivePending] = useState<PendingQuestion | null>(null);
   const [answerText, setAnswerText] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredQas = qas.filter((qa) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return qa.question.toLowerCase().includes(q) || qa.answer.toLowerCase().includes(q);
+  });
 
   useEffect(() => {
     setQas(loadQAs());
