@@ -12,6 +12,8 @@ import AlgoAddJob from "./pages/algoscout/AddJob.tsx";
 import AlgoProfile from "./pages/algoscout/Profile.tsx";
 import AlgoChat from "./pages/algoscout/Chat.tsx";
 import AlgoInterviewPrep from "./pages/algoscout/InterviewPrep.tsx";
+import AlgoAuth from "./pages/algoscout/Auth.tsx";
+import AlgoOnboarding from "./pages/algoscout/Onboarding.tsx";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +26,8 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/algoscout/auth" element={<AlgoAuth />} />
+            <Route path="/algoscout/onboarding" element={<AlgoOnboarding />} />
             <Route path="/algoscout" element={<AlgoDashboard />} />
             <Route path="/algoscout/add" element={<AlgoAddJob />} />
             <Route path="/algoscout/profile" element={<AlgoProfile />} />
