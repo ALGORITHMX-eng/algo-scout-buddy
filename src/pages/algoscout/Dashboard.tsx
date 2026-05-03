@@ -131,7 +131,7 @@ export default function AlgoDashboard() {
     <div className="min-h-screen bg-background text-foreground">
       <AlgoNavbar />
 
-      <main className="mx-auto max-w-6xl px-5 py-8">
+      <main className="mx-auto max-w-6xl px-3 sm:px-5 py-8">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="font-display text-2xl font-semibold tracking-tight">Dashboard</h1>
