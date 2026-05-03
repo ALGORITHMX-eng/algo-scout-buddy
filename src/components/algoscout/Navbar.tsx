@@ -38,7 +38,7 @@ export const AlgoNavbar = () => {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur overflow-x-auto">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-3 sm:px-5 py-3 min-w-0">
-        <Link to="/algoscout" className="flex items-center gap-2.5">
+        <Link to="/algoscout" className="flex items-center gap-2 shrink-0 min-w-0">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30">
             <Radar className="h-4 w-4" />
           </span>
