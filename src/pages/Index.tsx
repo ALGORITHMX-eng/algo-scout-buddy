@@ -22,12 +22,20 @@ const Index = () => {
         <p className="mt-5 max-w-xl text-base text-muted-foreground">
           AlgoScout watches your target companies, scores roles against your profile, and pings you the moment a high match shows up.
         </p>
-        <Link
-          to="/algoscout"
-          className="mt-8 inline-flex items-center gap-2 rounded-lg bg-emerald-500/15 px-5 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25"
-        >
-          Open dashboard <ArrowRight className="h-4 w-4" />
-        </Link>
+        <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
+          <Link
+            to="/algoscout/auth"
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+          >
+            Sign Up <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link
+            to="/algoscout/auth"
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/15 px-6 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25"
+          >
+            Sign In
+          </Link>
+        </div>
       </main>
     </div>
   );
