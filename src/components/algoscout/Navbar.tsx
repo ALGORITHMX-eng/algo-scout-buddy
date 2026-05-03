@@ -48,7 +48,7 @@ export const AlgoNavbar = () => {
           </div>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <Link to="/algoscout/chat" className={iconBtn} aria-label="AI Chat">
             <Bot className="h-3.5 w-3.5" />
           </Link>
