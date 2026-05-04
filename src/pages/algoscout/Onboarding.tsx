@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, ChevronRight, Radar, BarChart3, Mic, MessageSquare, Bell, ClipboardList } from "lucide-react";
+import { ArrowRight, ChevronRight, Radar, BarChart3, Mic, MessageSquare, Bell, ClipboardList, PlusCircle, ShieldCheck } from "lucide-react";
 
 import onboardingDashboard from "@/assets/onboarding-dashboard.jpg";
 import onboardingInterview from "@/assets/onboarding-interview.jpg";
 import onboardingProfile from "@/assets/onboarding-profile.jpg";
 import onboardingNotifications from "@/assets/onboarding-notifications.jpg";
 import onboardingChat from "@/assets/onboarding-chat.jpg";
+import onboardingAddjob from "@/assets/onboarding-addjob.jpg";
+import onboardingReview from "@/assets/onboarding-review.jpg";
 
 interface Slide {
   image: string;
@@ -24,6 +26,22 @@ const slides: Slide[] = [
     subtitle: "Your command center",
     description:
       "Every job lead gets an AI score from 1–10. Approve, reject, or bulk-manage leads in one tap. Filter by tags like Remote, High Priority, and more.",
+  },
+  {
+    image: onboardingAddjob,
+    icon: <PlusCircle className="h-5 w-5" />,
+    title: "Add Jobs Manually",
+    subtitle: "Full control",
+    description:
+      "Found a job on your own? Add it manually with the company name, role, URL, and notes. It gets scored by AI just like auto-discovered leads.",
+  },
+  {
+    image: onboardingReview,
+    icon: <ShieldCheck className="h-5 w-5" />,
+    title: "Human in the Loop",
+    subtitle: "You stay in control",
+    description:
+      "Before any application is sent, you review it first. AI generates a new cover letter and tailored resume for each job — you approve, edit, or reject before giving the AI the go-ahead.",
   },
   {
     image: onboardingInterview,
