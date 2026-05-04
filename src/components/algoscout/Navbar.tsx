@@ -1,4 +1,4 @@
-import { Bell, Bot, Mic, Radar, Plus, User } from "lucide-react";
+import { Bell, Bot, Mic, Radar, Plus, User, Settings } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { Job, getReadNotifIds, loadJobs, markNotifsRead, scoreColor } from "@/lib/algoscout-data";
@@ -57,6 +57,9 @@ export const AlgoNavbar = () => {
           </Link>
           <Link to="/algoscout/profile" className={iconBtn} aria-label="Form Memory">
             <User className="h-3.5 w-3.5" />
+          </Link>
+          <Link to="/algoscout/settings" className={iconBtn} aria-label="Settings">
+            <Settings className="h-3.5 w-3.5" />
           </Link>
           <Link
             to="/algoscout/add"
