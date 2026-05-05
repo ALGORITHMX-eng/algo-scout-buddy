@@ -36,9 +36,10 @@ export const AlgoNavbar = () => {
   const iconBtn = "inline-flex items-center justify-center h-8 w-8 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25";
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur overflow-visible">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-3 sm:px-5 py-3 min-w-0">
-        <Link to="/algoscout" className="flex items-center gap-2 shrink-0 min-w-0">
+    <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur">
+      {/* Row 1: Logo + Add Job + Theme + Notifications */}
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-3 sm:px-5 py-3">
+        <Link to="/algoscout" className="flex items-center gap-2 shrink-0">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30">
             <Radar className="h-4 w-4" />
           </span>
@@ -48,28 +49,28 @@ export const AlgoNavbar = () => {
           </div>
         </Link>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <Link to="/algoscout/chat" className={`${iconBtn} flex-col gap-0.5 h-auto w-auto px-2 py-1.5 sm:flex-row sm:h-8 sm:w-8 sm:px-0 sm:py-0`} aria-label="AI Chat">
-            <Bot className="h-3.5 w-3.5" />
-            <span className="text-[9px] font-medium leading-none sm:hidden">Chat</span>
-          </Link>
-          <Link to="/algoscout/interview" className={`${iconBtn} flex-col gap-0.5 h-auto w-auto px-2 py-1.5 sm:flex-row sm:h-8 sm:w-8 sm:px-0 sm:py-0`} aria-label="Interview Prep">
-            <Mic className="h-3.5 w-3.5" />
-            <span className="text-[9px] font-medium leading-none sm:hidden">Interview</span>
-          </Link>
-          <Link to="/algoscout/profile" className={`${iconBtn} flex-col gap-0.5 h-auto w-auto px-2 py-1.5 sm:flex-row sm:h-8 sm:w-8 sm:px-0 sm:py-0`} aria-label="Form Memory">
-            <User className="h-3.5 w-3.5" />
-            <span className="text-[9px] font-medium leading-none sm:hidden">Profile</span>
-          </Link>
-          <Link to="/algoscout/settings" className={`${iconBtn} flex-col gap-0.5 h-auto w-auto px-2 py-1.5 sm:flex-row sm:h-8 sm:w-8 sm:px-0 sm:py-0`} aria-label="Settings">
-            <Settings className="h-3.5 w-3.5" />
-            <span className="text-[9px] font-medium leading-none sm:hidden">Settings</span>
-          </Link>
+        <div className="flex items-center gap-2">
+          {/* Nav icons — hidden on mobile, shown on sm+ */}
+          <div className="hidden sm:flex items-center gap-2">
+            <Link to="/algoscout/chat" className={iconBtn} aria-label="AI Chat">
+              <Bot className="h-3.5 w-3.5" />
+            </Link>
+            <Link to="/algoscout/interview" className={iconBtn} aria-label="Interview Prep">
+              <Mic className="h-3.5 w-3.5" />
+            </Link>
+            <Link to="/algoscout/profile" className={iconBtn} aria-label="Form Memory">
+              <User className="h-3.5 w-3.5" />
+            </Link>
+            <Link to="/algoscout/settings" className={iconBtn} aria-label="Settings">
+              <Settings className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+
           <Link
             to="/algoscout/add"
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25"
           >
-            <Plus className="h-3.5 w-3.5" /> Add job
+            <Plus className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Add job</span>
           </Link>
           <ThemeToggle />
           <div ref={ref} className="relative">
@@ -87,7 +88,7 @@ export const AlgoNavbar = () => {
             </button>
 
             {open && (
-              <div className="absolute right-0 mt-2 w-80 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl">
+              <div className="fixed sm:absolute right-2 sm:right-0 top-14 sm:top-auto sm:mt-2 w-[calc(100vw-1rem)] sm:w-80 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl z-50">
                 <div className="border-b border-border px-4 py-3">
                   <div className="font-display text-sm font-semibold text-foreground">High-score matches</div>
                   <div className="text-[11px] text-muted-foreground">Roles scoring 8.0 or above</div>
@@ -123,6 +124,26 @@ export const AlgoNavbar = () => {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Row 2: Nav links — visible only on mobile */}
+      <div className="flex sm:hidden items-center justify-around border-t border-border/50 px-2 py-2">
+        <Link to="/algoscout/chat" className="flex flex-col items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+          <Bot className="h-4 w-4" />
+          <span className="text-[9px] font-medium">Chat</span>
+        </Link>
+        <Link to="/algoscout/interview" className="flex flex-col items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+          <Mic className="h-4 w-4" />
+          <span className="text-[9px] font-medium">Interview</span>
+        </Link>
+        <Link to="/algoscout/profile" className="flex flex-col items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+          <User className="h-4 w-4" />
+          <span className="text-[9px] font-medium">Profile</span>
+        </Link>
+        <Link to="/algoscout/settings" className="flex flex-col items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+          <Settings className="h-4 w-4" />
+          <span className="text-[9px] font-medium">Settings</span>
+        </Link>
       </div>
     </header>
   );
