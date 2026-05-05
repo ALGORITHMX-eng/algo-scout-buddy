@@ -52,30 +52,70 @@ const plans = [
     price: "$0",
     period: "forever",
     icon: Zap,
-    features: ["5 tracked jobs", "Basic AI chat", "Form memory", "1 interview / day"],
+    features: [
+      "1 auto-scan per day",
+      "Active for 3 days only",
+      "5 job slots max",
+      "Basic AI chat",
+      "Manual job add (counts toward daily limit)",
+      "PDF upload for 1 of 3 jobs",
+    ],
     accent: "text-muted-foreground",
     ring: "ring-border",
     bg: "bg-card",
   },
   {
+    id: "starter",
+    name: "Starter",
+    price: "$9",
+    period: "/mo",
+    icon: Zap,
+    features: [
+      "8 auto-scans per day (every 3hrs)",
+      "Unlimited job slots",
+      "AI job scoring",
+      "Cover letter generation",
+      "PDF upload",
+      "Manual job add (counts toward daily limit)",
+    ],
+    accent: "text-blue-600 dark:text-blue-400",
+    ring: "ring-blue-500/40",
+    bg: "bg-blue-500/5",
+  },
+  {
     id: "pro",
     name: "Pro",
-    price: "$12",
+    price: "$19",
     period: "/mo",
     icon: Crown,
-    features: ["Unlimited jobs", "Priority AI chat", "Voice interviews", "Auto-apply (coming soon)", "Cover letter + resume per job"],
+    features: [
+      "16 auto-scans per day (every 1.5hrs)",
+      "Everything in Starter",
+      "Resume PDF upload & re-upload anytime",
+      "Voice interview prep",
+      "AI career coach",
+      "Priority scoring",
+      "Manual job add (counts toward daily limit)",
+    ],
     accent: "text-emerald-600 dark:text-emerald-400",
     ring: "ring-emerald-500/40",
     bg: "bg-emerald-500/5",
     popular: true,
   },
   {
-    id: "team",
-    name: "Team",
-    price: "$29",
+    id: "elite",
+    name: "Elite",
+    price: "$39",
     period: "/mo",
     icon: Shield,
-    features: ["Everything in Pro", "5 team seats", "Shared job board", "Analytics dashboard", "Priority support"],
+    features: [
+      "48 auto-scans per day (every 30mins)",
+      "Everything in Pro",
+      "Fastest job discovery",
+      "Priority Firecrawl processing",
+      "Resume PDF upload & re-upload anytime",
+      "Manual job add (counts toward daily limit)",
+    ],
     accent: "text-violet-600 dark:text-violet-400",
     ring: "ring-violet-500/40",
     bg: "bg-violet-500/5",
@@ -241,7 +281,7 @@ export default function SettingsPage() {
             <Crown className="h-4 w-4" /> Subscription
           </h2>
 
-          <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {plans.map((plan) => {
               const active = currentPlan === plan.id;
               return (
@@ -291,6 +331,28 @@ export default function SettingsPage() {
                 </div>
               );
             })}
+          </div>
+
+          {/* Auto-Apply Credits */}
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Auto-Apply Credits</h3>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { credits: 10, price: "$5" },
+                { credits: 30, price: "$10" },
+                { credits: 100, price: "$30" },
+              ].map((pack) => (
+                <button
+                  key={pack.credits}
+                  onClick={() => toast("Coming soon", { description: "Credit packs will be available shortly." })}
+                  className="rounded-xl border border-border bg-card p-4 text-center transition hover:bg-muted hover:border-emerald-500/30"
+                >
+                  <p className="text-lg font-bold text-foreground">{pack.credits}</p>
+                  <p className="text-[11px] text-muted-foreground">credits</p>
+                  <p className="mt-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400">{pack.price}</p>
+                </button>
+              ))}
+            </div>
           </div>
         </section>
       </main>
