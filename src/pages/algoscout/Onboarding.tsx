@@ -96,7 +96,7 @@ const Onboarding = () => {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* Header */}
-      <header className="flex items-center justify-between px-5 py-4">
+      <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 py-4">
         <div className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30">
             <Radar className="h-4 w-4" />
@@ -111,30 +111,33 @@ const Onboarding = () => {
         </button>
       </header>
 
-      {/* Image */}
-      <div className="relative mx-5 overflow-hidden rounded-2xl">
-        <img
-          src={slide.image}
-          alt={slide.title}
-          className="aspect-[4/3] w-full object-cover"
-          width={800}
-          height={600}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
-        <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-xl bg-background/70 px-3 py-1.5 backdrop-blur-sm">
-          <span className="text-emerald-600 dark:text-emerald-400">{slide.icon}</span>
-          <span className="text-xs font-medium text-foreground">{slide.subtitle}</span>
+      {/* Desktop: side-by-side / Mobile: stacked */}
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col md:flex-row md:items-center md:gap-10 px-5">
+        {/* Image */}
+        <div className="relative overflow-hidden rounded-2xl md:w-1/2 shrink-0">
+          <img
+            src={slide.image}
+            alt={slide.title}
+            className="aspect-[4/3] w-full object-cover"
+            width={800}
+            height={600}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
+          <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-xl bg-background/70 px-3 py-1.5 backdrop-blur-sm">
+            <span className="text-emerald-600 dark:text-emerald-400">{slide.icon}</span>
+            <span className="text-xs font-medium text-foreground">{slide.subtitle}</span>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex flex-1 flex-col pt-6 md:pt-0">
+          <h2 className="font-display text-2xl font-semibold text-foreground">{slide.title}</h2>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground md:text-base">{slide.description}</p>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex flex-1 flex-col px-5 pt-6">
-        <h2 className="font-display text-2xl font-semibold text-foreground">{slide.title}</h2>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{slide.description}</p>
-      </div>
-
       {/* Footer */}
-      <div className="px-5 pb-8 pt-4">
+      <div className="mx-auto w-full max-w-3xl px-5 pb-8 pt-4">
         {/* Dots */}
         <div className="mb-6 flex items-center justify-center gap-2">
           {slides.map((_, i) => (
@@ -152,7 +155,7 @@ const Onboarding = () => {
 
         <button
           onClick={next}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-700 md:max-w-xs md:mx-auto"
         >
           {isLast ? (
             <>
