@@ -49,17 +49,21 @@ export const AlgoNavbar = () => {
         </Link>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <Link to="/algoscout/chat" className={iconBtn} aria-label="AI Chat">
+          <Link to="/algoscout/chat" className={`${iconBtn} flex-col gap-0.5 h-auto w-auto px-2 py-1.5 sm:flex-row sm:h-8 sm:w-8 sm:px-0 sm:py-0`} aria-label="AI Chat">
             <Bot className="h-3.5 w-3.5" />
+            <span className="text-[9px] font-medium leading-none sm:hidden">Chat</span>
           </Link>
-          <Link to="/algoscout/interview" className={iconBtn} aria-label="Interview Prep">
+          <Link to="/algoscout/interview" className={`${iconBtn} flex-col gap-0.5 h-auto w-auto px-2 py-1.5 sm:flex-row sm:h-8 sm:w-8 sm:px-0 sm:py-0`} aria-label="Interview Prep">
             <Mic className="h-3.5 w-3.5" />
+            <span className="text-[9px] font-medium leading-none sm:hidden">Interview</span>
           </Link>
-          <Link to="/algoscout/profile" className={iconBtn} aria-label="Form Memory">
+          <Link to="/algoscout/profile" className={`${iconBtn} flex-col gap-0.5 h-auto w-auto px-2 py-1.5 sm:flex-row sm:h-8 sm:w-8 sm:px-0 sm:py-0`} aria-label="Form Memory">
             <User className="h-3.5 w-3.5" />
+            <span className="text-[9px] font-medium leading-none sm:hidden">Profile</span>
           </Link>
-          <Link to="/algoscout/settings" className={iconBtn} aria-label="Settings">
+          <Link to="/algoscout/settings" className={`${iconBtn} flex-col gap-0.5 h-auto w-auto px-2 py-1.5 sm:flex-row sm:h-8 sm:w-8 sm:px-0 sm:py-0`} aria-label="Settings">
             <Settings className="h-3.5 w-3.5" />
+            <span className="text-[9px] font-medium leading-none sm:hidden">Settings</span>
           </Link>
           <Link
             to="/algoscout/add"

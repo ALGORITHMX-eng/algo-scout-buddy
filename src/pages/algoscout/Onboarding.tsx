@@ -65,7 +65,7 @@ const slides: Slide[] = [
     title: "Form Memory",
     subtitle: "Never re-type answers",
     description:
-      "Save common application answers once. When Skyvern can't fill a field, you'll get an alert — answer once and it's saved forever.",
+      "Save common application answers once. When AlgoScout can't fill a field, you'll get an alert — answer once and it's saved forever.",
   },
   {
     image: onboardingNotifications,
