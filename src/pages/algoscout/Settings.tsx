@@ -281,7 +281,7 @@ export default function SettingsPage() {
             <Crown className="h-4 w-4" /> Subscription
           </h2>
 
-          <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {plans.map((plan) => {
               const active = currentPlan === plan.id;
               return (
@@ -331,6 +331,28 @@ export default function SettingsPage() {
                 </div>
               );
             })}
+          </div>
+
+          {/* Auto-Apply Credits */}
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Auto-Apply Credits</h3>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { credits: 10, price: "$5" },
+                { credits: 30, price: "$10" },
+                { credits: 100, price: "$30" },
+              ].map((pack) => (
+                <button
+                  key={pack.credits}
+                  onClick={() => toast("Coming soon", { description: "Credit packs will be available shortly." })}
+                  className="rounded-xl border border-border bg-card p-4 text-center transition hover:bg-muted hover:border-emerald-500/30"
+                >
+                  <p className="text-lg font-bold text-foreground">{pack.credits}</p>
+                  <p className="text-[11px] text-muted-foreground">credits</p>
+                  <p className="mt-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400">{pack.price}</p>
+                </button>
+              ))}
+            </div>
           </div>
         </section>
       </main>
