@@ -372,6 +372,8 @@ export default function SettingsPage() {
               ))}
             </div>
           </div>
+        </section>
+
         {/* ── Interview History ── */}
         <section className="space-y-4 pb-10">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
