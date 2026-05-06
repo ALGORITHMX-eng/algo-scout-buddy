@@ -130,10 +130,24 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings>(defaults);
   const [dirty, setDirty] = useState(false);
   const [currentPlan] = useState("free");
+  const [interviews, setInterviews] = useState<InterviewSession[]>([]);
 
   useEffect(() => {
     setSettings(load());
+    setInterviews(loadInterviewSessions());
   }, []);
+
+  const handleDeleteInterview = (id: string) => {
+    deleteInterviewSession(id);
+    setInterviews(loadInterviewSessions());
+    toast.success("Interview session deleted");
+  };
+
+  const formatDuration = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}m ${sec}s`;
+  };
 
   const update = (key: keyof UserSettings, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
