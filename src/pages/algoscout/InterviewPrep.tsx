@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ChatMessage, streamChat } from "@/lib/algoscout-chat";
+import { saveInterviewSession } from "@/lib/algoscout-chat-history";
 import { Bot, Mic, MicOff, Send, Square, Volume2, MessageSquareText, Radio, Clock, X, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -191,6 +192,17 @@ export default function InterviewPrepPage() {
   };
 
   const endSession = () => {
+    // Save interview session to history
+    if (messages.length > 0) {
+      const elapsed = timerMinutes * 60 - timerSeconds;
+      saveInterviewSession({
+        id: crypto.randomUUID(),
+        mode: mode as "text" | "live",
+        messages,
+        duration: elapsed,
+        createdAt: new Date().toISOString(),
+      });
+    }
     setTimerRunning(false);
     setIsListening(false);
     setIsSpeaking(false);
