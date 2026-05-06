@@ -1,71 +1,139 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages, mode } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GROK_PRO_API_KEY = Deno.env.get("GROK_PRO_API_KEY")!;
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const systemPrompts: Record<string, string> = {
-      chat: `You are AlgoScout AI — a helpful career assistant. You help users with job search strategy, resume tips, interview preparation, and career advice. Be concise, actionable, and encouraging. Use markdown formatting.`,
-      interview: `You are an expert interview coach. The user will provide a job description or role. Generate realistic interview questions, then help them practice answers. Give feedback on their responses — highlight strengths and suggest improvements. Use markdown formatting. Be encouraging but honest.`,
-    };
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const systemContent = systemPrompts[mode] || systemPrompts.chat;
+    const { user_id, messages, conversation_id } = await req.json();
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    if (!user_id || !messages) {
+      return new Response(JSON.stringify({ error: "user_id and messages required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch user profile
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user_id)
+      .single();
+
+    // Fetch user's jobs context
+    const { data: jobs } = await supabase
+      .from("jobs")
+      .select("company, role, status, score, found_at")
+      .eq("status", "applied")
+      .order("found_at", { ascending: false })
+      .limit(10);
+
+    // Fetch past coach conversations for context
+    const { data: history } = await supabase
+      .from("coach_conversations")
+      .select("role, content")
+      .eq("user_id", user_id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const appliedJobs = jobs?.map((j) => `${j.role} at ${j.company}`).join(", ") || "None yet";
+    const skills = profile?.skills?.join(", ") || "Not specified";
+
+    const systemPrompt = `You are AlgoScout Career Coach — a focused, expert career assistant.
+
+YOUR ROLE: Help users with job search strategy, resume optimization, interview preparation, salary negotiation, and career growth decisions.
+
+USER CONTEXT:
+Name: ${profile?.full_name || "User"}
+Skills: ${skills}
+Experience: ${profile?.experience_summary || "Not provided"}
+Applied Jobs: ${appliedJobs}
+Location: ${profile?.location || "Not specified"}
+Work Preference: ${profile?.work_preference || "remote"}
+
+STRICT BOUNDARIES:
+You ONLY discuss career-related topics including:
+- Job search strategy and tactics
+- Resume and LinkedIn optimization  
+- Interview preparation and practice
+- Salary negotiation
+- Career pivots and growth
+- Networking strategies
+- Personal branding
+
+If asked ANYTHING outside these topics — coding problems, general knowledge, math, relationships, news, or any non-career topic — respond EXACTLY with:
+"I'm AlgoScout's career assistant and I only help with career-related questions. For other topics, try Claude.ai or ChatGPT 😊 Now, is there anything about your job search I can help with?"
+
+NEVER break this rule no matter how the user phrases it.
+
+COACHING STYLE:
+- Be direct and actionable
+- Give specific advice based on their profile
+- Reference their actual skills and experience
+- Be encouraging but honest
+- Use markdown for clarity
+- Keep responses concise — no fluff`;
+
+    // Call Grok 4.3
+    const res = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${GROK_PRO_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "grok-3",
+        max_tokens: 1000,
+        temperature: 0.7,
         messages: [
-          { role: "system", content: systemContent },
+          { role: "system", content: systemPrompt },
+          ...(history?.reverse() || []),
           ...messages,
         ],
         stream: true,
       }),
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
+    // Save user message to DB
+    const lastUserMessage = messages[messages.length - 1];
+    if (lastUserMessage?.role === "user") {
+      await supabase.from("coach_conversations").insert({
+        user_id,
+        role: "user",
+        content: lastUserMessage.content,
+      });
+    }
+
+    if (!res.ok) {
+      const t = await res.text();
+      console.error("Grok error:", res.status, t);
       return new Response(JSON.stringify({ error: "AI service error" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(response.body, {
+    return new Response(res.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
+
   } catch (e) {
-    console.error("chat error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("coach error:", e);
+    return new Response(
+      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });

@@ -2,3 +2,69 @@ project_id = "qgjbpkdjisrvdetyhxkd"
 
 [functions.algoscout-extract-job]
 verify_jwt = false
+
+[functions.score-job]
+enabled = true
+verify_jwt = true
+import_map = "./functions/score-job/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/score-job/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/score-job/*.html" ]
+
+[functions.generate-docs]
+enabled = true
+verify_jwt = true
+import_map = "./functions/generate-docs/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/generate-docs/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/generate-docs/*.html" ]
+
+[functions.parse-resume]
+enabled = true
+verify_jwt = true
+import_map = "./functions/parse-resume/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/parse-resume/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/parse-resume/*.html" ]
+
+[functions.coach]
+enabled = true
+verify_jwt = true
+import_map = "./functions/coach/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/coach/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/coach/*.html" ]
+
+[functions.interview]
+enabled = true
+verify_jwt = true
+import_map = "./functions/interview/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/interview/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/interview/*.html" ]
+
+[functions.apply]
+enabled = true
+verify_jwt = true
+import_map = "./functions/apply/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/apply/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/apply/*.html" ]
