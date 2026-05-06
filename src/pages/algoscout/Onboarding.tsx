@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, ChevronRight, Radar, BarChart3, Mic, MessageSquare, Bell, ClipboardList, PlusCircle, ShieldCheck } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { checkHasProfile } from "@/hooks/useAuth";
 
 import onboardingDashboard from "@/assets/onboarding-dashboard.jpg";
 import onboardingInterview from "@/assets/onboarding-interview.jpg";
@@ -24,56 +26,49 @@ const slides: Slide[] = [
     icon: <BarChart3 className="h-5 w-5" />,
     title: "AI-Scored Dashboard",
     subtitle: "Your command center",
-    description:
-      "Every job lead gets an AI score from 1–10. Approve, reject, or bulk-manage leads in one tap. Filter by tags like Remote, High Priority, and more.",
+    description: "Every job lead gets an AI score from 1–10. Approve, reject, or bulk-manage leads in one tap. Filter by tags like Remote, High Priority, and more.",
   },
   {
     image: onboardingAddjob,
     icon: <PlusCircle className="h-5 w-5" />,
     title: "Add Jobs Manually",
     subtitle: "Full control",
-    description:
-      "Found a job on your own? Add it manually with the company name, role, URL, and notes. It gets scored by AI just like auto-discovered leads.",
+    description: "Found a job on your own? Add it manually with the company name, role, URL, and notes. It gets scored by AI just like auto-discovered leads.",
   },
   {
     image: onboardingReview,
     icon: <ShieldCheck className="h-5 w-5" />,
     title: "Human in the Loop",
     subtitle: "You stay in control",
-    description:
-      "Before any application is sent, you review it first. AI generates a new cover letter and tailored resume for each job — you approve, edit, or reject before giving the AI the go-ahead.",
+    description: "Before any application is sent, you review it first. AI generates a new cover letter and tailored resume for each job — you approve, edit, or reject before giving the AI the go-ahead.",
   },
   {
     image: onboardingInterview,
     icon: <Mic className="h-5 w-5" />,
     title: "Voice Interview Prep",
     subtitle: "Practice with AI",
-    description:
-      "Choose Live Voice or Text Chat mode, set a timer, and practice real interview questions. The AI responds with voice feedback — like a real interviewer.",
+    description: "Choose Live Voice or Text Chat mode, set a timer, and practice real interview questions. The AI responds with voice feedback — like a real interviewer.",
   },
   {
     image: onboardingChat,
     icon: <MessageSquare className="h-5 w-5" />,
     title: "AI Career Coach",
     subtitle: "Get personalized advice",
-    description:
-      "Chat with your AI career coach about resumes, salary negotiation, career pivots, and more. It remembers your context and gives tailored guidance.",
+    description: "Chat with your AI career coach about resumes, salary negotiation, career pivots, and more. It remembers your context and gives tailored guidance.",
   },
   {
     image: onboardingProfile,
     icon: <ClipboardList className="h-5 w-5" />,
     title: "Form Memory",
     subtitle: "Never re-type answers",
-    description:
-      "Save common application answers once. When AlgoScout can't fill a field, you'll get an alert — answer once and it's saved forever.",
+    description: "Save common application answers once. When AlgoScout can't fill a field, you'll get an alert — answer once and it's saved forever.",
   },
   {
     image: onboardingNotifications,
     icon: <Bell className="h-5 w-5" />,
     title: "Smart Notifications",
     subtitle: "Never miss a match",
-    description:
-      "Get instant alerts when a role scores 8+ against your profile. Tap the notification to view full details and take action immediately.",
+    description: "Get instant alerts when a role scores 8+ against your profile. Tap the notification to view full details and take action immediately.",
   },
 ];
 
@@ -83,8 +78,26 @@ const Onboarding = () => {
   const slide = slides[current];
   const isLast = current === slides.length - 1;
 
-  const finish = () => {
-    localStorage.setItem("algoscout:onboarded", "true");
+  // Ensure user is logged in
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) navigate("/algoscout/auth");
+    });
+  }, [navigate]);
+
+  const finish = async () => {
+    // Ensure profile exists (create minimal one if not)
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const has = await checkHasProfile(session.user.id);
+      if (!has) {
+        await supabase.from("profiles").insert({
+          user_id: session.user.id,
+          full_name: session.user.user_metadata?.full_name || "",
+          email: session.user.email || "",
+        } as any);
+      }
+    }
     navigate("/algoscout");
   };
 
@@ -95,7 +108,6 @@ const Onboarding = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
       <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 py-4">
         <div className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30">
@@ -103,25 +115,14 @@ const Onboarding = () => {
           </span>
           <span className="font-display text-sm font-semibold text-foreground">AlgoScout</span>
         </div>
-        <button
-          onClick={finish}
-          className="text-xs font-medium text-muted-foreground hover:text-foreground transition"
-        >
+        <button onClick={finish} className="text-xs font-medium text-muted-foreground hover:text-foreground transition">
           Skip
         </button>
       </header>
 
-      {/* Desktop: side-by-side / Mobile: stacked */}
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col md:flex-row md:items-center md:gap-10 px-5">
-        {/* Image */}
         <div className="relative overflow-hidden rounded-2xl md:w-1/2 shrink-0">
-          <img
-            src={slide.image}
-            alt={slide.title}
-            className="aspect-[4/3] w-full object-cover"
-            width={800}
-            height={600}
-          />
+          <img src={slide.image} alt={slide.title} className="aspect-[4/3] w-full object-cover" width={800} height={600} />
           <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
           <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-xl bg-background/70 px-3 py-1.5 backdrop-blur-sm">
             <span className="text-emerald-600 dark:text-emerald-400">{slide.icon}</span>
@@ -129,26 +130,19 @@ const Onboarding = () => {
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex flex-1 flex-col pt-6 md:pt-0">
           <h2 className="font-display text-2xl font-semibold text-foreground">{slide.title}</h2>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground md:text-base">{slide.description}</p>
         </div>
       </div>
 
-      {/* Footer */}
       <div className="mx-auto w-full max-w-3xl px-5 pb-8 pt-4">
-        {/* Dots */}
         <div className="mb-6 flex items-center justify-center gap-2">
           {slides.map((_, i) => (
             <button
               key={i}
               onClick={() => setCurrent(i)}
-              className={`h-2 rounded-full transition-all ${
-                i === current
-                  ? "w-6 bg-emerald-500"
-                  : "w-2 bg-muted-foreground/30"
-              }`}
+              className={`h-2 rounded-full transition-all ${i === current ? "w-6 bg-emerald-500" : "w-2 bg-muted-foreground/30"}`}
             />
           ))}
         </div>
@@ -158,13 +152,9 @@ const Onboarding = () => {
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-700 md:max-w-xs md:mx-auto"
         >
           {isLast ? (
-            <>
-              Get Started <ArrowRight className="h-4 w-4" />
-            </>
+            <>Get Started <ArrowRight className="h-4 w-4" /></>
           ) : (
-            <>
-              Next <ChevronRight className="h-4 w-4" />
-            </>
+            <>Next <ChevronRight className="h-4 w-4" /></>
           )}
         </button>
       </div>
