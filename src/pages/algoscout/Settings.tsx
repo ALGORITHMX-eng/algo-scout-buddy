@@ -372,6 +372,61 @@ export default function SettingsPage() {
               ))}
             </div>
           </div>
+        {/* ── Interview History ── */}
+        <section className="space-y-4 pb-10">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            <Mic className="h-4 w-4" /> Interview History
+          </h2>
+
+          {interviews.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-6 text-center">
+              <Clock className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
+              <p className="text-sm text-muted-foreground">No interview sessions yet</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Complete an interview practice to see it here</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {interviews.map((session) => {
+                const date = new Date(session.createdAt);
+                const qCount = session.messages.filter((m) => m.role === "assistant").length;
+                const firstQ = session.messages.find((m) => m.role === "assistant")?.content.slice(0, 80);
+                return (
+                  <div
+                    key={session.id}
+                    className="group flex items-start gap-3 rounded-xl border border-border bg-card p-4 transition hover:bg-muted"
+                  >
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      session.mode === "live"
+                        ? "bg-emerald-500/15 text-emerald-500"
+                        : "bg-blue-500/15 text-blue-500"
+                    }`}>
+                      {session.mode === "live" ? <Radio className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">
+                          {session.mode === "live" ? "Voice Interview" : "Text Interview"}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {date.toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatDuration(session.duration)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{qCount} exchanges</p>
+                      {firstQ && (
+                        <p className="text-xs text-muted-foreground/70 mt-1 truncate">{firstQ}…</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleDeleteInterview(session.id)}
+                      className="hidden group-hover:flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-rose-500 transition"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       </main>
     </div>
