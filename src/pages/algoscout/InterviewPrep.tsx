@@ -192,6 +192,17 @@ export default function InterviewPrepPage() {
   };
 
   const endSession = () => {
+    // Save interview session to history
+    if (messages.length > 0) {
+      const elapsed = timerMinutes * 60 - timerSeconds;
+      saveInterviewSession({
+        id: crypto.randomUUID(),
+        mode,
+        messages,
+        duration: elapsed,
+        createdAt: new Date().toISOString(),
+      });
+    }
     setTimerRunning(false);
     setIsListening(false);
     setIsSpeaking(false);
