@@ -14,7 +14,258 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      coach_conversations: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      cover_letters: {
+        Row: {
+          content: string | null
+          created_at: string
+          id: string
+          job_id: string | null
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cover_letters_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interview_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          interview_type: string | null
+          job_id: string | null
+          messages: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          interview_type?: string | null
+          job_id?: string | null
+          messages?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          interview_type?: string | null
+          job_id?: string | null
+          messages?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_sessions_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          applied_at: string | null
+          breakdown: Json | null
+          company: string
+          cover_letter: string | null
+          created_at: string
+          description: string | null
+          found_at: string
+          id: string
+          job_url: string | null
+          location: string | null
+          raw_text: string | null
+          reason: string | null
+          resume: string | null
+          role: string
+          score: number | null
+          skyvern_status: string | null
+          skyvern_task_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          applied_at?: string | null
+          breakdown?: Json | null
+          company: string
+          cover_letter?: string | null
+          created_at?: string
+          description?: string | null
+          found_at?: string
+          id?: string
+          job_url?: string | null
+          location?: string | null
+          raw_text?: string | null
+          reason?: string | null
+          resume?: string | null
+          role: string
+          score?: number | null
+          skyvern_status?: string | null
+          skyvern_task_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          applied_at?: string | null
+          breakdown?: Json | null
+          company?: string
+          cover_letter?: string | null
+          created_at?: string
+          description?: string | null
+          found_at?: string
+          id?: string
+          job_url?: string | null
+          location?: string | null
+          raw_text?: string | null
+          reason?: string | null
+          resume?: string | null
+          role?: string
+          score?: number | null
+          skyvern_status?: string | null
+          skyvern_task_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          experience_summary: string | null
+          full_name: string | null
+          github: string | null
+          id: string
+          linkedin: string | null
+          location: string | null
+          phone: string | null
+          portfolio: string | null
+          raw_resume_text: string | null
+          skills: string[] | null
+          updated_at: string
+          user_id: string
+          work_preference: string | null
+          years_experience: number | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          experience_summary?: string | null
+          full_name?: string | null
+          github?: string | null
+          id?: string
+          linkedin?: string | null
+          location?: string | null
+          phone?: string | null
+          portfolio?: string | null
+          raw_resume_text?: string | null
+          skills?: string[] | null
+          updated_at?: string
+          user_id: string
+          work_preference?: string | null
+          years_experience?: number | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          experience_summary?: string | null
+          full_name?: string | null
+          github?: string | null
+          id?: string
+          linkedin?: string | null
+          location?: string | null
+          phone?: string | null
+          portfolio?: string | null
+          raw_resume_text?: string | null
+          skills?: string[] | null
+          updated_at?: string
+          user_id?: string
+          work_preference?: string | null
+          years_experience?: number | null
+        }
+        Relationships: []
+      }
+      resumes: {
+        Row: {
+          created_at: string
+          id: string
+          job_id: string | null
+          tailored_json: Json | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          tailored_json?: Json | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          tailored_json?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resumes_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
