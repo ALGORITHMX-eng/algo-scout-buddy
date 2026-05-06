@@ -3,11 +3,12 @@ export type ChatMessage = {
   content: string;
 };
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/algoscout-chat`;
-
 export async function streamChat({
   messages,
   mode = "chat",
+  userId,
+  jobId,
+  interviewType,
   onDelta,
   onDone,
   onError,
@@ -15,25 +16,37 @@ export async function streamChat({
 }: {
   messages: ChatMessage[];
   mode?: "chat" | "interview";
+  userId?: string;
+  jobId?: string;
+  interviewType?: string;
   onDelta: (text: string) => void;
   onDone: () => void;
   onError: (err: string) => void;
   signal?: AbortSignal;
 }) {
+  const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const url = mode === "interview"
+    ? `${baseUrl}/functions/v1/interview`
+    : `${baseUrl}/functions/v1/coach`;
+
+  const body = mode === "interview"
+    ? { user_id: userId, job_id: jobId, interview_type: interviewType || "hr", messages }
+    : { user_id: userId, messages };
+
   try {
-    const resp = await fetch(CHAT_URL, {
+    const resp = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
       },
-      body: JSON.stringify({ messages, mode }),
+      body: JSON.stringify(body),
       signal,
     });
 
     if (!resp.ok) {
-      const body = await resp.json().catch(() => ({}));
-      onError(body.error || `Error ${resp.status}`);
+      const b = await resp.json().catch(() => ({}));
+      onError(b.error || `Error ${resp.status}`);
       return;
     }
 

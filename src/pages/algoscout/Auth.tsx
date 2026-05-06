@@ -1,10 +1,12 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Radar, Mail, Lock, User, ArrowRight, Upload, Sparkles, FileText,
   Loader2, Check, ChevronRight, Download, ArrowLeft,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { checkHasProfile } from "@/hooks/useAuth";
 
 type Step = "signin" | "signup" | "resume-choice" | "upload-resume" | "career-guide" | "generating";
 
@@ -21,6 +23,7 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
 
   // Resume upload
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -38,47 +41,116 @@ const Auth = () => {
 
   const navigate = useNavigate();
 
+  // Check if already logged in
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const has = await checkHasProfile(session.user.id);
+        navigate(has ? "/algoscout" : "/algoscout/onboarding");
+      }
+    });
+  }, [navigate]);
+
   const inputCls =
     "w-full rounded-xl border border-border bg-card px-4 py-3 pl-11 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition";
 
-  // ── Screen 1: Sign up / Sign in ──
-  const handleAuthSubmit = (e: React.FormEvent) => {
+  // ── Sign up / Sign in ──
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       toast({ title: "Please fill in all fields", variant: "destructive" });
       return;
     }
+    setAuthLoading(true);
+
     if (step === "signup") {
       if (!name) {
         toast({ title: "Please enter your name", variant: "destructive" });
+        setAuthLoading(false);
         return;
       }
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: name } },
+      });
+      setAuthLoading(false);
+      if (error) {
+        toast({ title: error.message, variant: "destructive" });
+        return;
+      }
+      // After signup, move to resume choice (profile will be created after onboarding)
       setStep("resume-choice");
     } else {
-      // Sign in → onboarding
-      localStorage.setItem("algoscout:onboarded", "false");
-      navigate("/algoscout/onboarding");
+      // Sign in
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      setAuthLoading(false);
+      if (error) {
+        toast({ title: error.message, variant: "destructive" });
+        return;
+      }
+      if (data.user) {
+        const has = await checkHasProfile(data.user.id);
+        navigate(has ? "/algoscout" : "/algoscout/onboarding");
+      }
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + "/algoscout/onboarding" },
+    });
+    if (error) toast({ title: error.message, variant: "destructive" });
+  };
+
   // ── Path A: Upload resume ──
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadedFile(file);
     setExtracting(true);
-    // Simulate extraction
-    setTimeout(() => {
-      setExtractedKeywords([
-        "JavaScript", "React", "TypeScript", "Node.js", "REST APIs",
-        "Git", "Agile", "Problem Solving", "Communication",
-      ]);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(",")[1];
+        const { data, error } = await supabase.functions.invoke("parse-resume", {
+          body: {
+            user_id: session.user.id,
+            resumeBase64: base64,
+            mimeType: file.type,
+          },
+        });
+        if (error) throw error;
+        const keywords = data?.keywords || data?.skills || [
+          "JavaScript", "React", "TypeScript", "Node.js", "REST APIs",
+        ];
+        setExtractedKeywords(Array.isArray(keywords) ? keywords : []);
+        setExtracting(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error(err);
+      toast({ title: "Could not parse resume", variant: "destructive" });
       setExtracting(false);
-    }, 2500);
+    }
   };
 
-  const confirmKeywords = () => {
-    localStorage.setItem("algoscout:onboarded", "false");
+  const confirmKeywords = async () => {
+    // Create profile with extracted skills
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await supabase.from("profiles").upsert({
+        user_id: session.user.id,
+        full_name: name || session.user.user_metadata?.full_name || "",
+        email: email || session.user.email || "",
+        skills: extractedKeywords,
+      } as any);
+    }
     navigate("/algoscout/onboarding");
   };
 
@@ -93,16 +165,26 @@ const Auth = () => {
     if (careerStep < careerQuestions.length - 1) {
       setCareerStep((s) => s + 1);
     } else {
-      // Generate resume
       setStep("generating");
-      setTimeout(() => {
-        setGeneratedResume(true);
-      }, 3000);
+      // Create profile from career guide answers
+      (async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const skills = updated.skills?.split(",").map((s: string) => s.trim()).filter(Boolean) || [];
+          await supabase.from("profiles").upsert({
+            user_id: session.user.id,
+            full_name: name || session.user.user_metadata?.full_name || "",
+            email: email || session.user.email || "",
+            skills,
+            experience_summary: updated.experience || "",
+          } as any);
+        }
+        setTimeout(() => setGeneratedResume(true), 2000);
+      })();
     }
   };
 
   const handleDownloadResume = () => {
-    // Create a simple text-based resume for demo
     const lines = [
       name.toUpperCase(),
       email,
@@ -130,7 +212,6 @@ const Auth = () => {
   };
 
   const finishCareerGuide = () => {
-    localStorage.setItem("algoscout:onboarded", "false");
     navigate("/algoscout/onboarding");
   };
 
@@ -186,8 +267,10 @@ const Auth = () => {
 
             <button
               type="submit"
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              disabled={authLoading}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
             >
+              {authLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {step === "signin" ? "Sign In" : "Create Account"}
               <ArrowRight className="h-4 w-4" />
             </button>
@@ -200,7 +283,7 @@ const Auth = () => {
           </div>
 
           <button
-            onClick={handleAuthSubmit as any}
+            onClick={handleGoogleSignIn}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-background py-3 text-sm font-medium text-foreground transition hover:bg-muted"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24">
@@ -319,14 +402,12 @@ const Auth = () => {
             <ArrowLeft className="h-3.5 w-3.5" /> Back
           </button>
 
-          {/* Progress */}
           <div className="flex gap-1">
             {careerQuestions.map((_, i) => (
               <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= careerStep ? "bg-emerald-500" : "bg-muted"}`} />
             ))}
           </div>
 
-          {/* Chat bubble */}
           <div className="rounded-2xl bg-card border border-border p-5 shadow-sm space-y-4">
             <div className="flex items-start gap-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 mt-0.5">
@@ -383,7 +464,6 @@ const Auth = () => {
                 <p className="text-sm text-muted-foreground text-center">Your AI-generated resume is ready to download</p>
               </div>
 
-              {/* Preview card */}
               <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3">
                 <p className="text-sm font-semibold text-foreground">{name}</p>
                 <p className="text-xs text-muted-foreground">{email}</p>
