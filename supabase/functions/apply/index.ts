@@ -90,8 +90,7 @@ APPLICANT DETAILS:
 - Years of Experience: ${profile.years_experience}
 - Work Authorization: Remote contractor available worldwide
 
-COVER LETTER:
-${coverLetter?.content || "I am excited to apply for this role. My experience in AI systems and automation engineering makes me a strong fit."}
+${coverLetter?.content || "Cover letter not yet generated for this job. Please generate documents before applying."}
 
 RESUME SUMMARY:
 ${resumeJson?.summary || profile.experience_summary || ""}
@@ -107,6 +106,17 @@ INSTRUCTIONS:
 Do NOT fill in salary expectations unless required.
 Do NOT create accounts unless necessary — use ${profile.email} if needed.
 `;
+
+
+if (!coverLetter?.content) {
+  return new Response(
+    JSON.stringify({ 
+      error: "Please generate your tailored resume and cover letter before applying.",
+      code: "DOCS_NOT_GENERATED"
+    }),
+    { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
 
     // Create Skyvern task
     const skyvernRes = await fetch("https://api.skyvern.com/api/v1/tasks", {
