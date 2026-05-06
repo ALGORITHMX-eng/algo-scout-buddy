@@ -197,7 +197,7 @@ export default function InterviewPrepPage() {
       const elapsed = timerMinutes * 60 - timerSeconds;
       saveInterviewSession({
         id: crypto.randomUUID(),
-        mode,
+        mode: mode as "text" | "live",
         messages,
         duration: elapsed,
         createdAt: new Date().toISOString(),
