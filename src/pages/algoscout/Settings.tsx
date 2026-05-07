@@ -129,15 +129,33 @@ const plans = [
 ];
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   const [settings, setSettings] = useState<UserSettings>(defaults);
   const [dirty, setDirty] = useState(false);
   const [currentPlan] = useState("free");
   const [interviews, setInterviews] = useState<InterviewSession[]>([]);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     setSettings(load());
     setInterviews(loadInterviewSessions());
   }, []);
+
+  const handleRegenerateSeeds = async () => {
+    if (!user) { toast.error("Not logged in"); return; }
+    setRegenerating(true);
+    try {
+      const { error } = await supabase.functions.invoke("generate-seeds", {
+        body: { user_id: user.id },
+      });
+      if (error) throw error;
+      toast.success("Search queries regenerated!");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to regenerate");
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   const handleDeleteInterview = (id: string) => {
     deleteInterviewSession(id);
