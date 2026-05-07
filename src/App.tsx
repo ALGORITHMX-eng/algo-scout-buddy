@@ -26,7 +26,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<AlgoDashboard />} />
             <Route path="/algoscout/auth" element={<AlgoAuth />} />
             <Route path="/algoscout/onboarding" element={<AlgoOnboarding />} />
             <Route path="/algoscout" element={<AlgoDashboard />} />
