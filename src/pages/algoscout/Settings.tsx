@@ -7,11 +7,13 @@ import { toast } from "sonner";
 import {
   Settings as SettingsIcon, User, MapPin, Briefcase, Code2, FileText,
   Save, Upload, Sparkles, Check, Crown, Zap, Shield, ChevronRight,
-  Mic, MessageSquareText, Radio, Trash2, Clock,
+  Mic, MessageSquareText, Radio, Trash2, Clock, RefreshCw, Loader2,
 } from "lucide-react";
 import {
   InterviewSession, loadInterviewSessions, deleteInterviewSession,
 } from "@/lib/algoscout-chat-history";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 /* ---------- Local persistence ---------- */
 const SETTINGS_KEY = "algoscout:settings:v1";
