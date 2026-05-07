@@ -67,13 +67,15 @@ export default function AlgoDashboard() {
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    if (!user) return;
     const fetchJobs = async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      const query = supabase
         .from("jobs")
         .select("*")
         .order("found_at", { ascending: false });
+      // If user is logged in, RLS automatically filters by user_id
+      // If no user (auth disabled), show all jobs
+      const { data, error } = await query;
       if (error) {
         console.error(error);
         toast.error("Failed to load jobs");
