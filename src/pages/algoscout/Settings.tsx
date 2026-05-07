@@ -313,6 +313,23 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* ── Regenerate Search Queries ── */}
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            <RefreshCw className="h-4 w-4" /> Search Queries
+          </h2>
+          <p className="text-xs text-muted-foreground">Regenerate your personalized job search queries after updating your profile.</p>
+          <Button
+            onClick={handleRegenerateSeeds}
+            disabled={regenerating}
+            variant="outline"
+            className="w-full rounded-xl border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+          >
+            {regenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Regenerate Search Queries
+          </Button>
+        </section>
+
         {/* ── Subscriptions ── */}
         <section className="space-y-4 pb-10">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
