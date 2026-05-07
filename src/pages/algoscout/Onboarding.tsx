@@ -97,6 +97,14 @@ const Onboarding = () => {
           email: session.user.email || "",
         } as any);
       }
+      // Generate personalized job search queries
+      try {
+        await supabase.functions.invoke("generate-seeds", {
+          body: { user_id: session.user.id },
+        });
+      } catch (e) {
+        console.error("Failed to generate seeds:", e);
+      }
     }
     navigate("/algoscout");
   };
