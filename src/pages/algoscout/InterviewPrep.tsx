@@ -2,14 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ChatMessage, streamChat } from "@/lib/algoscout-chat";
 import { saveInterviewSession } from "@/lib/algoscout-chat-history";
+import { InterviewFeedback, InterviewFeedbackData } from "@/components/algoscout/InterviewFeedback";
 import { useAuth } from "@/hooks/useAuth";
-import { Bot, Mic, MicOff, Send, Square, Volume2, MessageSquareText, Radio, Clock, X, Play } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Bot, Mic, MicOff, Send, Square, Volume2, MessageSquareText, Radio, Clock, X, Play, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
-type InterviewMode = "select" | "text" | "live";
+type InterviewMode = "select" | "text" | "live" | "feedback";
 type TimerDuration = 5 | 10 | 15 | 20 | 30 | 45 | 60;
 const TIMER_OPTIONS: TimerDuration[] = [5, 10, 15, 20, 30, 45, 60];
 
@@ -32,7 +34,9 @@ export default function InterviewPrepPage() {
   const recognitionRef = useRef<any>(null);
   const [liveTranscript, setLiveTranscript] = useState("");
 
-  // Placeholder job_id - in a real flow the user would select a job
+  const [feedbackData, setFeedbackData] = useState<InterviewFeedbackData | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+
   const [jobId] = useState<string | undefined>(undefined);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -98,7 +102,7 @@ export default function InterviewPrepPage() {
   const stopSpeaking = useCallback(() => { window.speechSynthesis.cancel(); setIsSpeaking(false); }, []);
 
   const sendMessage = useCallback(async (text: string) => {
-    if (!text || isLoading || !user) return;
+    if (!text || isLoading) return;
     const userMsg: ChatMessage = { role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
@@ -110,7 +114,7 @@ export default function InterviewPrepPage() {
     await streamChat({
       messages: allMessages,
       mode: "interview",
-      userId: user.id,
+      userId: user?.id,
       jobId,
       interviewType: "hr",
       signal: controller.signal,
@@ -142,19 +146,73 @@ export default function InterviewPrepPage() {
   const startSession = (selectedMode: "text" | "live") => {
     setMode(selectedMode);
     setMessages([]);
+    setFeedbackData(null);
     startTimer();
     if (selectedMode === "live") setTimeout(() => startListening(), 500);
   };
 
-  const endSession = () => {
+  const endSession = async () => {
+    const currentMode = mode as "text" | "live";
+    const elapsed = timerMinutes * 60 - timerSeconds;
+
     if (messages.length > 0) {
-      const elapsed = timerMinutes * 60 - timerSeconds;
-      saveInterviewSession({ id: crypto.randomUUID(), mode: mode as "text" | "live", messages, duration: elapsed, createdAt: new Date().toISOString() });
+      saveInterviewSession({ id: crypto.randomUUID(), mode: currentMode, messages, duration: elapsed, createdAt: new Date().toISOString() });
     }
     setTimerRunning(false); setIsListening(false); setIsSpeaking(false);
     recognitionRef.current?.stop(); window.speechSynthesis.cancel();
-    setMode("select"); setMessages([]); setLiveTranscript(""); setInput("");
+
+    // Call interview edge function for feedback
+    if (messages.length > 1) {
+      setFeedbackLoading(true);
+      setMode("feedback");
+      try {
+        const { data, error } = await supabase.functions.invoke("interview", {
+          body: {
+            user_id: user?.id,
+            job_id: jobId,
+            interview_type: "hr",
+            messages,
+            get_feedback: true,
+          },
+        });
+        if (error) throw error;
+        if (data?.feedback) {
+          setFeedbackData(data.feedback);
+        } else if (data?.overall_score !== undefined) {
+          setFeedbackData(data as InterviewFeedbackData);
+        } else {
+          toast.info("No feedback available for this session");
+          setMode("select");
+        }
+      } catch (err: any) {
+        console.error("Feedback error:", err);
+        toast.error("Could not get interview feedback");
+        setMode("select");
+      } finally {
+        setFeedbackLoading(false);
+      }
+    } else {
+      setMode("select");
+    }
+    setMessages([]); setLiveTranscript(""); setInput("");
   };
+
+  // Feedback view
+  if (mode === "feedback") {
+    return (
+      <div className="flex min-h-screen flex-col bg-background text-foreground">
+        <AlgoNavbar />
+        {feedbackLoading ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4">
+            <Loader2 className="h-10 w-10 animate-spin text-emerald-500" />
+            <p className="text-sm font-medium text-foreground">Analyzing your interview performance…</p>
+          </div>
+        ) : feedbackData ? (
+          <InterviewFeedback feedback={feedbackData} onClose={() => { setFeedbackData(null); setMode("select"); }} />
+        ) : null}
+      </div>
+    );
+  }
 
   if (mode === "select") {
     return (
