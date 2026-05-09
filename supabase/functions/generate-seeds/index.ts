@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const GROK_FAST_API_KEY = Deno.env.get("GROK_FAST_API_KEY")!;
+const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -24,14 +24,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch user profile
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user_id)
+      .eq("user_id", user_id)
       .single();
 
-    if (!profile) {
+    if (profileError || !profile) {
       return new Response(JSON.stringify({ error: "Profile not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -44,21 +43,25 @@ Deno.serve(async (req) => {
     const experience = profile.experience_summary || "";
     const workPref = profile.work_preference || "remote";
 
-    // Generate seeds with Grok
-    const res = await fetch("https://api.x.ai/v1/chat/completions", {
+    const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${GROK_FAST_API_KEY}`,
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "grok-4-flash",
+        model: "gpt-4o",
         max_tokens: 500,
         temperature: 0.8,
+        response_format: { type: "json_object" },
         messages: [
           {
+            role: "system",
+            content: "You are a job search expert. Return only valid JSON, no markdown.",
+          },
+          {
             role: "user",
-            content: `You are a job search expert. Generate 8 highly targeted job search queries for this candidate.
+            content: `Generate 8 highly targeted job search queries for this candidate.
 
 CANDIDATE:
 Name: ${profile.full_name}
@@ -74,21 +77,30 @@ RULES:
 - Make queries specific to their skills and roles
 - Include "remote" in most queries
 - Vary the queries so they find different jobs
-- Think about what companies hiring for their skills would post
 
-Return ONLY a JSON array of 8 strings, no markdown:
-["query 1", "query 2", "query 3", "query 4", "query 5", "query 6", "query 7", "query 8"]`,
+Return ONLY this JSON structure:
+{"queries": ["query 1", "query 2", "query 3", "query 4", "query 5", "query 6", "query 7", "query 8"]}`,
           },
         ],
       }),
     });
 
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("GPT-4o API error:", errText);
+      return new Response(JSON.stringify({ error: "GPT-4o API failed", detail: errText }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || "[]";
+    const text = data.choices?.[0]?.message?.content || "{}";
 
     let queries: string[] = [];
     try {
-      queries = JSON.parse(text);
+      const parsed = JSON.parse(text);
+      queries = parsed.queries || [];
     } catch {
       const match = text.match(/\[[\s\S]*\]/);
       queries = match ? JSON.parse(match[0]) : [];
@@ -101,20 +113,20 @@ Return ONLY a JSON array of 8 strings, no markdown:
       });
     }
 
-    // Delete old seeds for this user
-    await supabase
-      .from("search_seeds")
-      .delete()
-      .eq("user_id", user_id);
+    // Delete old seeds then insert new ones
+    await supabase.from("search_seeds").delete().eq("user_id", user_id);
 
-    // Insert new seeds
-    const seedRows = queries.map((query: string) => ({
-      user_id,
-      query,
-      source: "generated",
-    }));
+    const { error: insertError } = await supabase.from("search_seeds").insert(
+      queries.map((query: string) => ({ user_id, query, source: "generated" }))
+    );
 
-    await supabase.from("search_seeds").insert(seedRows);
+    if (insertError) {
+      console.error("Seeds insert error:", insertError);
+      return new Response(JSON.stringify({ error: "Failed to save seeds", detail: insertError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     return new Response(
       JSON.stringify({ success: true, seeds: queries }),

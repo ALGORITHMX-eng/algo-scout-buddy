@@ -10,13 +10,13 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const GROK_PRO_API_KEY = Deno.env.get("GROK_PRO_API_KEY")!;
+    const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { user_id, messages, conversation_id } = await req.json();
+    const { user_id, messages } = await req.json();
 
     if (!user_id || !messages) {
       return new Response(JSON.stringify({ error: "user_id and messages required" }), {
@@ -25,22 +25,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch user profile
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user_id)
+      .eq("user_id", user_id)
       .single();
 
-    // Fetch user's jobs context
     const { data: jobs } = await supabase
       .from("jobs")
       .select("company, role, status, score, found_at")
+      .eq("user_id", user_id)
       .eq("status", "applied")
       .order("found_at", { ascending: false })
       .limit(10);
 
-    // Fetch past coach conversations for context
     const { data: history } = await supabase
       .from("coach_conversations")
       .select("role, content")
@@ -64,19 +62,8 @@ Location: ${profile?.location || "Not specified"}
 Work Preference: ${profile?.work_preference || "remote"}
 
 STRICT BOUNDARIES:
-You ONLY discuss career-related topics including:
-- Job search strategy and tactics
-- Resume and LinkedIn optimization  
-- Interview preparation and practice
-- Salary negotiation
-- Career pivots and growth
-- Networking strategies
-- Personal branding
-
-If asked ANYTHING outside these topics — coding problems, general knowledge, math, relationships, news, or any non-career topic — respond EXACTLY with:
+You ONLY discuss career-related topics. If asked anything outside — respond EXACTLY with:
 "I'm AlgoScout's career assistant and I only help with career-related questions. For other topics, try Claude.ai or ChatGPT 😊 Now, is there anything about your job search I can help with?"
-
-NEVER break this rule no matter how the user phrases it.
 
 COACHING STYLE:
 - Be direct and actionable
@@ -86,15 +73,23 @@ COACHING STYLE:
 - Use markdown for clarity
 - Keep responses concise — no fluff`;
 
-    // Call Grok 4.3
-    const res = await fetch("https://api.x.ai/v1/chat/completions", {
+    const lastUserMessage = messages[messages.length - 1];
+    if (lastUserMessage?.role === "user") {
+      await supabase.from("coach_conversations").insert({
+        user_id,
+        role: "user",
+        content: lastUserMessage.content,
+      });
+    }
+
+    const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${GROK_PRO_API_KEY}`,
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "grok-3",
+        model: "gpt-4o",
         max_tokens: 1000,
         temperature: 0.7,
         messages: [
@@ -106,19 +101,9 @@ COACHING STYLE:
       }),
     });
 
-    // Save user message to DB
-    const lastUserMessage = messages[messages.length - 1];
-    if (lastUserMessage?.role === "user") {
-      await supabase.from("coach_conversations").insert({
-        user_id,
-        role: "user",
-        content: lastUserMessage.content,
-      });
-    }
-
     if (!res.ok) {
       const t = await res.text();
-      console.error("Grok error:", res.status, t);
+      console.error("GPT-4o error:", res.status, t);
       return new Response(JSON.stringify({ error: "AI service error" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -130,7 +115,7 @@ COACHING STYLE:
     });
 
   } catch (e) {
-    console.error("coach error:", e);
+    console.error("algoscout-chat error:", e);
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

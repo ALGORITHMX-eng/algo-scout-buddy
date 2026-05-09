@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -24,31 +24,27 @@ Deno.serve(async (req) => {
       });
     }
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    // Decode base64 resume to plain text for GPT-4o
+    const resumeText = atob(resumeBase64);
+
+    const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${GITHUB_TOKEN}`,
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5",
+        model: "gpt-4o",
         max_tokens: 2000,
+        response_format: { type: "json_object" },
         messages: [
           {
+            role: "system",
+            content: "You are a resume parser. Always return only valid JSON, no markdown, no explanation.",
+          },
+          {
             role: "user",
-            content: [
-              {
-                type: "document",
-                source: {
-                  type: "base64",
-                  media_type: mimeType || "application/pdf",
-                  data: resumeBase64,
-                },
-              },
-              {
-                type: "text",
-                text: `Extract all information from this resume and return ONLY a JSON object, no markdown:
+            content: `Extract all information from this resume and return ONLY a JSON object:
 {
   "full_name": "candidate name",
   "email": "email address",
@@ -62,18 +58,19 @@ Deno.serve(async (req) => {
   "preferred_titles": ["title1", "title2"],
   "experience_summary": "2-3 sentence summary of background",
   "raw_resume_text": "full plain text of entire resume"
-}`,
-              },
-            ],
+}
+
+Resume content:
+${resumeText}`,
           },
         ],
       }),
     });
 
     const data = await res.json();
-    const text = data.content?.[0]?.text || "{}";
+    const text = data.choices?.[0]?.message?.content || "{}";
 
-    let parsed;
+    let parsed: Record<string, any> = {};
     try {
       parsed = JSON.parse(text);
     } catch {
@@ -81,24 +78,35 @@ Deno.serve(async (req) => {
       parsed = match ? JSON.parse(match[0]) : {};
     }
 
-    await supabase.from("profiles").upsert({
-      id: user_id,
-      full_name: parsed.full_name || "",
-      email: parsed.email || "",
-      phone: parsed.phone || "",
-      location: parsed.location || "",
-      linkedin: parsed.linkedin || "",
-      github: parsed.github || "",
-      portfolio: parsed.portfolio || "",
-      years_experience: parsed.years_experience || 0,
-      skills: parsed.skills || [],
-      preferred_titles: parsed.preferred_titles || [],
-      experience_summary: parsed.experience_summary || "",
-      raw_resume_text: parsed.raw_resume_text || "",
-      updated_at: new Date().toISOString(),
-    });
+    const { error: upsertError } = await supabase.from("profiles").upsert(
+      {
+        user_id,
+        full_name: parsed.full_name || "",
+        email: parsed.email || "",
+        phone: parsed.phone || "",
+        location: parsed.location || "",
+        linkedin: parsed.linkedin || "",
+        github: parsed.github || "",
+        portfolio: parsed.portfolio || "",
+        years_experience: parsed.years_experience || 0,
+        skills: parsed.skills || [],
+        preferred_titles: parsed.preferred_titles || [],
+        experience_summary: parsed.experience_summary || "",
+        raw_resume_text: parsed.raw_resume_text || "",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
 
-    return new Response(JSON.stringify({ profile: parsed }), {
+    if (upsertError) {
+      console.error("Profile upsert error:", upsertError);
+      return new Response(
+        JSON.stringify({ error: "Failed to save profile", detail: upsertError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(JSON.stringify({ success: true, profile: parsed }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 

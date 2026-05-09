@@ -8,8 +8,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 Deno.serve(async (req) => {
@@ -25,7 +24,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch job
     const { data: job } = await supabase
       .from("jobs")
       .select("*")
@@ -39,11 +37,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch user profile
+    // FIX: use user_id column not id
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user_id)
+      .eq("user_id", user_id)
       .single();
 
     if (!profile) {
@@ -53,7 +51,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch tailored resume for this job
     const { data: resume } = await supabase
       .from("resumes")
       .select("tailored_json")
@@ -63,7 +60,6 @@ Deno.serve(async (req) => {
       .limit(1)
       .single();
 
-    // Fetch cover letter for this job
     const { data: coverLetter } = await supabase
       .from("cover_letters")
       .select("content")
@@ -73,9 +69,19 @@ Deno.serve(async (req) => {
       .limit(1)
       .single();
 
+    // FIX: check docs before building prompt
+    if (!coverLetter?.content) {
+      return new Response(
+        JSON.stringify({
+          error: "Please generate your tailored resume and cover letter before applying.",
+          code: "DOCS_NOT_GENERATED",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const resumeJson = resume?.tailored_json || {};
 
-    // Build Skyvern navigation prompt
     const navigationGoal = `
 You are applying for the role of "${job.role}" at "${job.company}" on behalf of ${profile.full_name}.
 
@@ -90,35 +96,23 @@ APPLICANT DETAILS:
 - Years of Experience: ${profile.years_experience}
 - Work Authorization: Remote contractor available worldwide
 
-${coverLetter?.content || "Cover letter not yet generated for this job. Please generate documents before applying."}
+COVER LETTER:
+${coverLetter.content}
 
 RESUME SUMMARY:
 ${resumeJson?.summary || profile.experience_summary || ""}
 
 INSTRUCTIONS:
 1. Fill in all required form fields with the applicant details above
-2. If asked for a cover letter or additional info, use the cover letter above
+2. If asked for a cover letter, use the cover letter above
 3. If asked to upload a resume, skip that field
 4. Submit the application
-5. Take a screenshot of the confirmation page
-6. Return the confirmation URL or message
+5. Return the confirmation URL or message
 
 Do NOT fill in salary expectations unless required.
 Do NOT create accounts unless necessary — use ${profile.email} if needed.
 `;
 
-
-if (!coverLetter?.content) {
-  return new Response(
-    JSON.stringify({ 
-      error: "Please generate your tailored resume and cover letter before applying.",
-      code: "DOCS_NOT_GENERATED"
-    }),
-    { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-}
-
-    // Create Skyvern task
     const skyvernRes = await fetch("https://api.skyvern.com/api/v1/tasks", {
       method: "POST",
       headers: {
@@ -127,7 +121,7 @@ if (!coverLetter?.content) {
       },
       body: JSON.stringify({
         url: job.job_url,
-        webhook_callback_url: `${SUPABASE_URL}/functions/v1/skyvern-webhook`,
+        webhook_callback_url: `${SUPABASE_URL}/functions/v1/skyvern-webhook?secret=${SCOUT_SECRET}`,
         navigation_goal: navigationGoal,
         data_extraction_goal: "Extract the application confirmation number or message.",
         proxy_location: "RESIDENTIAL",
@@ -142,11 +136,10 @@ if (!coverLetter?.content) {
       throw new Error(`Skyvern error: ${JSON.stringify(skyvernData)}`);
     }
 
-    // Update job status
     await supabase
       .from("jobs")
       .update({
-        status: "applied",
+        status: "applying",
         skyvern_task_id: taskId,
         skyvern_status: "running",
         applied_at: new Date().toISOString(),

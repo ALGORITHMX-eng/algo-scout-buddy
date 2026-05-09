@@ -4,6 +4,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY")!;
 const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
+const SCOUT_SECRET = Deno.env.get("SCOUT_SECRET")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -12,55 +13,83 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-scout-secret",
 };
 
-function base64UrlToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+function base64UrlToUint8Array(base64: string): Uint8Array {
+  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
-async function sendPush(
-  subscription: { endpoint: string; p256dh: string; auth: string },
-  payload: string
-): Promise<boolean> {
-  try {
-    const signingKey = await crypto.subtle.importKey(
-      "pkcs8",
-      base64UrlToUint8Array(VAPID_PRIVATE_KEY),
+// FIX: import raw EC key (VAPID keys are raw P-256, not PKCS8)
+async function importVapidPrivateKey(rawBase64: string): Promise<CryptoKey> {
+  const rawBytes = base64UrlToUint8Array(rawBase64);
+
+  // VAPID private key is 32 raw bytes — wrap into JWK for import
+  const jwk = {
+    kty: "EC",
+    crv: "P-256",
+    d: rawBase64,
+    // derive x,y from public key
+    x: VAPID_PUBLIC_KEY.slice(0, 43),
+    y: VAPID_PUBLIC_KEY.slice(43),
+  };
+
+  // If raw bytes length is 32, it's a raw EC key — use JWK
+  if (rawBytes.length === 32) {
+    return await crypto.subtle.importKey(
+      "jwk", jwk,
       { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["sign"]
+      false, ["sign"]
     );
+  }
 
-    const header = { alg: "ES256", typ: "JWT" };
-    const now = Math.floor(Date.now() / 1000);
-    const origin = new URL(subscription.endpoint).origin;
-    const claims = { aud: origin, exp: now + 86400, sub: "mailto:support@algoscout.app" };
+  // Otherwise assume PKCS8
+  return await crypto.subtle.importKey(
+    "pkcs8", rawBytes,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false, ["sign"]
+  );
+}
 
-    const encode = (obj: object) =>
-      btoa(JSON.stringify(obj)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+async function buildVapidJwt(endpoint: string): Promise<string> {
+  const signingKey = await importVapidPrivateKey(VAPID_PRIVATE_KEY);
 
-    const unsignedToken = `${encode(header)}.${encode(claims)}`;
+  const encode = (obj: object) =>
+    btoa(JSON.stringify(obj)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 
-    const signature = await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
-      signingKey,
-      new TextEncoder().encode(unsignedToken)
-    );
+  const now = Math.floor(Date.now() / 1000);
+  const origin = new URL(endpoint).origin;
+  const header = { alg: "ES256", typ: "JWT" };
+  const claims = { aud: origin, exp: now + 43200, sub: "mailto:support@algoscout.app" };
 
-    const jwt = `${unsignedToken}.${btoa(String.fromCharCode(...new Uint8Array(signature)))
-      .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_")}`;
+  const unsigned = `${encode(header)}.${encode(claims)}`;
+  const sig = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    signingKey,
+    new TextEncoder().encode(unsigned)
+  );
 
-    const res = await fetch(subscription.endpoint, {
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+
+  return `${unsigned}.${sigB64}`;
+}
+
+// FIX: send empty push — no body = no encryption needed
+async function sendEmptyPush(endpoint: string): Promise<boolean> {
+  try {
+    const jwt = await buildVapidJwt(endpoint);
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Authorization": `vapid t=${jwt},k=${VAPID_PUBLIC_KEY}`,
-        "Content-Type": "application/octet-stream",
         "TTL": "86400",
+        "Content-Length": "0",
       },
-      body: new TextEncoder().encode(payload),
     });
 
+    if (!res.ok) {
+      console.error(`Push failed: ${res.status} ${await res.text()}`);
+    }
     return res.ok;
   } catch (err) {
     console.error("Push send error:", err);
@@ -69,25 +98,22 @@ async function sendPush(
 }
 
 function buildNotification(record: any): { title: string; body: string; url: string } {
-  const notifType = record.notification_type || "new_job";
+  const type = record.notification_type || "new_job";
 
-  if (notifType === "applied") {
+  if (type === "applied") {
     return {
       title: `✅ Applied to ${record.company}`,
-      body: `${record.role} — Application submitted successfully`,
+      body: `${record.role} — Application submitted`,
       url: `/algoscout/job/${record.id}`,
     };
   }
-
-  if (notifType === "needs_help") {
+  if (type === "needs_help") {
     return {
       title: `⚠️ Action needed at ${record.company}`,
-      body: `Skyvern paused: ${record.question?.slice(0, 80) || "Unknown question"}`,
+      body: `Skyvern paused: ${record.question?.slice(0, 80) || "Unknown"}`,
       url: `/algoscout/job/${record.id}`,
     };
   }
-
-  // Default: new job found
   return {
     title: `${record.score}/10 match at ${record.company}`,
     body: `${record.role} — Review now`,
@@ -98,38 +124,46 @@ function buildNotification(record: any): { title: string; body: string; url: str
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // FIX: validate scout secret
+  const secret = req.headers.get("x-scout-secret");
+  if (secret !== SCOUT_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   try {
     const payload = await req.json();
     const record = payload.record;
 
-    if (!record) {
-      return new Response("No record", { status: 400 });
+    if (!record?.user_id) {
+      return new Response("No record or user_id", { status: 400 });
     }
 
-    // Get user_id from record
     const userId = record.user_id;
+    const notification = buildNotification(record);
 
-    // Fetch push subscriptions for this user
-    let query = supabase.from("push_subscriptions").select("*");
-    if (userId) {
-      query = query.eq("user_id", userId);
-    }
+    // Store notification in DB — SW fetches this when it wakes up
+    await supabase.from("notifications").insert({
+      user_id: userId,
+      title: notification.title,
+      body: notification.body,
+      url: notification.url,
+    });
 
-    const { data: subs } = await query;
+    // Get push subscriptions
+    const { data: subs } = await supabase
+      .from("push_subscriptions")
+      .select("endpoint")
+      .eq("user_id", userId);
 
     if (!subs || subs.length === 0) {
-      return new Response(JSON.stringify({ message: "No subscribers" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ message: "Notification saved, no push subscribers" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const notification = buildNotification(record);
-    const message = JSON.stringify(notification);
-
-    const results = await Promise.all(
-      subs.map((sub) => sendPush(sub, message))
-    );
-
+    // Send empty push to each subscription — SW will fetch notification from DB
+    const results = await Promise.all(subs.map((s) => sendEmptyPush(s.endpoint)));
     const sent = results.filter(Boolean).length;
 
     return new Response(

@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SCOUT_SECRET = Deno.env.get("SCOUT_SECRET")!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -10,8 +11,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Helper to call notify with proper auth
+async function callNotify(record: Record<string, any>) {
+  await fetch(`${SUPABASE_URL}/functions/v1/notify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, // FIX: was missing
+      "x-scout-secret": SCOUT_SECRET,                          // FIX: was missing
+    },
+    body: JSON.stringify({ record }),
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // FIX: validate Skyvern webhook — check a shared secret in query param
+  const url = new URL(req.url);
+  const secret = url.searchParams.get("secret");
+  if (secret !== SCOUT_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
+  }
 
   try {
     const payload = await req.json();
@@ -25,10 +46,9 @@ Deno.serve(async (req) => {
       return new Response("No task_id", { status: 400 });
     }
 
-    // Find job by skyvern task id
     const { data: job } = await supabase
       .from("jobs")
-      .select("*, profiles(*)")
+      .select("*")
       .eq("skyvern_task_id", taskId)
       .single();
 
@@ -36,9 +56,14 @@ Deno.serve(async (req) => {
       return new Response("Job not found", { status: 404 });
     }
 
-    // Handle different Skyvern statuses
+    // FIX: fetch profile separately (no FK relationship between jobs and profiles)
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("user_id", job.user_id)
+      .single();
+
     if (status === "completed") {
-      // Application submitted successfully
       await supabase
         .from("jobs")
         .update({
@@ -49,56 +74,30 @@ Deno.serve(async (req) => {
         })
         .eq("skyvern_task_id", taskId);
 
-      // Notify user of success
-      await fetch(`${SUPABASE_URL}/functions/v1/notify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          record: {
-            ...job,
-            status: "applied",
-            score: job.score,
-            company: job.company,
-            role: job.role,
-            notification_type: "applied",
-          },
-        }),
+      await callNotify({
+        ...job,
+        notification_type: "applied",
+        user_name: profile?.full_name,
       });
 
     } else if (status === "failed") {
-      // Application failed
       await supabase
         .from("jobs")
-        .update({
-          status: "failed",
-          skyvern_status: "failed",
-        })
+        .update({ status: "failed", skyvern_status: "failed" })
         .eq("skyvern_task_id", taskId);
 
     } else if (status === "needs_help") {
-      // Skyvern paused — unknown question
       const question = payload.question || "Unknown question encountered";
 
-      // Save the question to DB
       await supabase
         .from("jobs")
-        .update({
-          skyvern_status: "needs_help",
-          skyvern_question: question,
-        })
+        .update({ skyvern_status: "needs_help", skyvern_question: question })
         .eq("skyvern_task_id", taskId);
 
-      // Push notification to user — needs their input
-      await fetch(`${SUPABASE_URL}/functions/v1/notify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          record: {
-            ...job,
-            notification_type: "needs_help",
-            question,
-          },
-        }),
+      await callNotify({
+        ...job,
+        notification_type: "needs_help",
+        question,
       });
     }
 

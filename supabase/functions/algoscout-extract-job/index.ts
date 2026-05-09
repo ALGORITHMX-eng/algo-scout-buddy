@@ -1,143 +1,194 @@
-// Extract job posting details from a screenshot + generate tailored resume & cover letter.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const LOVABLE_AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-
-type Body = {
-  company: string;
-  role: string;
-  imageDataUrl?: string; // data:image/...;base64,...
-  userProfile?: string;
-};
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!apiKey) throw new Error("LOVABLE_API_KEY is not configured");
+    const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
+    const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY")!;
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const body = (await req.json()) as Body;
-    const company = (body.company || "").trim();
-    const role = (body.role || "").trim();
-    if (!company || !role) {
-      return new Response(JSON.stringify({ error: "company and role are required" }), {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    const { job_url, user_id } = await req.json();
+
+    if (!job_url || !user_id) {
+      return new Response(JSON.stringify({ error: "job_url and user_id are required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "save_job_posting",
-          description: "Extract job posting details and generate tailored resume + cover letter.",
-          parameters: {
-            type: "object",
-            properties: {
-              description: { type: "string", description: "Full job description, 2-4 paragraphs." },
-              location: { type: "string", description: "Location / remote policy. Best guess if unclear." },
-              applyUrl: { type: "string", description: "Application URL if visible, else empty string." },
-              reason: { type: "string", description: "One sentence: why this job might be a fit." },
-              score: { type: "number", description: "Match score 0-10 based on the role and description." },
-              resume: { type: "string", description: "Tailored resume bullet points as plain text, 5-8 bullets starting with •." },
-              coverLetter: { type: "string", description: "Tailored cover letter, 2-3 short paragraphs addressed to the company." },
-              breakdown: {
-                type: "object",
-                properties: {
-                  skills: { type: "number" },
-                  salary: { type: "number" },
-                  location: { type: "number" },
-                  culture: { type: "number" },
-                },
-                required: ["skills", "salary", "location", "culture"],
-                additionalProperties: false,
-              },
-            },
-            required: ["description", "location", "applyUrl", "reason", "score", "resume", "coverLetter", "breakdown"],
-            additionalProperties: false,
-          },
-        },
-      },
-    ];
+    // Fetch user profile for scoring context
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", user_id)
+      .single();
 
-    const userContent: any[] = [
-      {
-        type: "text",
-        text:
-          `Company: ${company}\nRole: ${role}\n\n` +
-          (body.imageDataUrl
-            ? "A screenshot of the job posting is attached. Extract the description, requirements, and location from it. "
-            : "No screenshot was provided — use general knowledge about this kind of role to synthesize a realistic description. ") +
-          "Then generate a tailored resume (bullets) and a cover letter targeted at this role. " +
-          "Also give a match score 0-10 and a 4-part breakdown (skills, salary, location, culture, each 0-10).",
-      },
-    ];
-    if (body.imageDataUrl) {
-      userContent.push({ type: "image_url", image_url: { url: body.imageDataUrl } });
+    if (!profile) {
+      return new Response(JSON.stringify({ error: "Profile not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const res = await fetch(LOVABLE_AI_URL, {
+    // Step 1 — Firecrawl scrape the job URL
+    const scrapeRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${FIRECRAWL_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are AlgoScout, an AI job-matching assistant. Extract accurate data from screenshots when provided. Output must call the save_job_posting tool exactly once.",
-          },
-          { role: "user", content: userContent },
-        ],
-        tools,
-        tool_choice: { type: "function", function: { name: "save_job_posting" } },
+        url: job_url,
+        formats: ["markdown"],
       }),
     });
 
-    if (!res.ok) {
-      const txt = await res.text();
-      if (res.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limits exceeded, please try again later." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (res.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Add funds in Settings → Workspace → Usage." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      console.error("AI gateway error:", res.status, txt);
-      return new Response(JSON.stringify({ error: "AI gateway error" }), {
+    if (!scrapeRes.ok) {
+      const err = await scrapeRes.text();
+      console.error("Firecrawl error:", err);
+      return new Response(JSON.stringify({ error: "Failed to scrape job URL" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const data = await res.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) {
-      return new Response(JSON.stringify({ error: "AI did not return structured output" }), {
-        status: 502,
+    const scrapeData = await scrapeRes.json();
+    const rawText = scrapeData.data?.markdown || scrapeData.data?.content || "";
+
+    if (!rawText || rawText.length < 100) {
+      return new Response(JSON.stringify({ error: "Could not extract content from job URL" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const extracted = JSON.parse(toolCall.function.arguments);
 
-    return new Response(JSON.stringify({ extracted }), {
+    const skills = profile.skills?.join(", ") || "Not specified";
+    const titles = profile.preferred_titles?.join(", ") || "Not specified";
+
+    // Step 2 — GPT-4o extracts + scores + generates docs
+    const aiRes = await fetch("https://models.inference.ai.azure.com/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        max_tokens: 2000,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: "You are AlgoScout, an AI job-matching assistant. Return only valid JSON, no markdown.",
+          },
+          {
+            role: "user",
+            content: `Extract and analyze this job posting for the candidate below.
+
+CANDIDATE:
+Name: ${profile.full_name}
+Skills: ${skills}
+Target Roles: ${titles}
+Experience: ${profile.experience_summary || ""}
+Years of Experience: ${profile.years_experience || 0}
+Location: ${profile.location || ""}
+Work Preference: ${profile.work_preference || "remote"}
+
+JOB PAGE CONTENT:
+${rawText.slice(0, 3000)}
+
+Return ONLY this JSON:
+{
+  "company": "company name",
+  "role": "job title",
+  "description": "full job description 2-4 paragraphs",
+  "location": "location or remote policy",
+  "applyUrl": "direct apply URL or empty string",
+  "reason": "one sentence why this job fits the candidate",
+  "score": 8,
+  "resume": "• Tailored bullet 1\\n• Tailored bullet 2\\n• Tailored bullet 3\\n• Tailored bullet 4\\n• Tailored bullet 5",
+  "coverLetter": "Tailored cover letter 2-3 short paragraphs addressed to the company",
+  "breakdown": {
+    "skills": 8,
+    "salary": 7,
+    "location": 9,
+    "culture": 8
+  }
+}`,
+          },
+        ],
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const txt = await aiRes.text();
+      if (aiRes.status === 429) {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      console.error("GPT-4o error:", aiRes.status, txt);
+      return new Response(JSON.stringify({ error: "AI extraction failed" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const aiData = await aiRes.json();
+    const text = aiData.choices?.[0]?.message?.content || "{}";
+
+    let extracted;
+    try {
+      extracted = JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/);
+      extracted = match ? JSON.parse(match[0]) : {};
+    }
+
+    // Step 3 — Save job to Supabase
+    const normalizedUrl = (() => {
+      try {
+        const u = new URL(job_url);
+        u.search = "";
+        return u.toString().toLowerCase().replace(/\/$/, "");
+      } catch {
+        return job_url.toLowerCase().trim();
+      }
+    })();
+
+    const { data: newJob } = await supabase
+      .from("jobs")
+      .insert({
+        user_id,
+        job_url,
+        job_url_normalized: normalizedUrl,
+        company: extracted.company || "Unknown",
+        role: extracted.role || "Unknown",
+        raw_text: rawText,
+        score: extracted.score || 0,
+        score_reason: extracted.reason || "",
+        status: "pending",
+        found_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    return new Response(JSON.stringify({ success: true, extracted, job: newJob }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (e) {
     console.error("extract-job error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {

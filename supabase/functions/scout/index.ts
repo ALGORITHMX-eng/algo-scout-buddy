@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY")!;
-const GROK_FAST_API_KEY = Deno.env.get("GROK_FAST_API_KEY")!;
+const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SCOUT_SECRET = Deno.env.get("SCOUT_SECRET")!;
@@ -13,7 +13,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-scout-secret",
 };
 
-// --- URL normalizer ---
 function normalizeUrl(url: string): string {
   try {
     const u = new URL(url);
@@ -24,7 +23,6 @@ function normalizeUrl(url: string): string {
   }
 }
 
-// --- Parse title into company + role ---
 function parseTitle(title: string, url: string): { company: string; role: string } {
   let role = title;
   let company = "Unknown";
@@ -51,7 +49,6 @@ function parseTitle(title: string, url: string): { company: string; role: string
   return { company, role };
 }
 
-// --- Firecrawl search ---
 async function searchJobs(query: string): Promise<any[]> {
   try {
     const res = await fetch("https://api.firecrawl.dev/v1/search", {
@@ -74,7 +71,6 @@ async function searchJobs(query: string): Promise<any[]> {
   }
 }
 
-// --- Grok scoring per user profile ---
 async function scoreJob(
   jobText: string,
   company: string,
@@ -85,22 +81,25 @@ async function scoreJob(
     const skills = profile.skills?.join(", ") || "Not specified";
     const titles = profile.preferred_titles?.join(", ") || "Not specified";
 
-    const res = await fetch("https://api.x.ai/v1/chat/completions", {
+    const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${GROK_FAST_API_KEY}`,
+        Authorization: `Bearer ${GITHUB_TOKEN}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "grok-4-flash",
+        model: "gpt-4o",
         max_tokens: 200,
         temperature: 0.1,
+        response_format: { type: "json_object" },
         messages: [
           {
+            role: "system",
+            content: "You are ALGOscout, an AI job scoring engine. Return only valid JSON, no markdown.",
+          },
+          {
             role: "user",
-            content: `You are ALGOscout, an AI job scoring engine.
-
-CANDIDATE PROFILE:
+            content: `CANDIDATE PROFILE:
 Name: ${profile.full_name}
 Location: ${profile.location} — ${profile.work_preference || "remote"} only
 Years of Experience: ${profile.years_experience || "Not specified"}
@@ -127,7 +126,7 @@ Company: ${company}
 Role: ${role}
 Description: ${jobText.slice(0, 2000)}
 
-Respond ONLY in this JSON format, no markdown:
+Respond ONLY in this JSON format:
 {"score": 8.5, "reason": "Strong match because..."}`,
           },
         ],
@@ -147,7 +146,7 @@ Respond ONLY in this JSON format, no markdown:
   }
 }
 
-// --- Send push notification ---
+// FIX 1: added Authorization header
 async function notifyUser(userId: string, job: any) {
   try {
     const { data: subs } = await supabase
@@ -161,6 +160,7 @@ async function notifyUser(userId: string, job: any) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         "x-scout-secret": SCOUT_SECRET,
       },
       body: JSON.stringify({ record: job }),
@@ -170,13 +170,11 @@ async function notifyUser(userId: string, job: any) {
   }
 }
 
-// --- Main scout function for one user ---
 async function scoutForUser(userId: string) {
-  // 1. Fetch user profile
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", userId)
+    .eq("user_id", userId)
     .single();
 
   if (!profile) {
@@ -184,7 +182,6 @@ async function scoutForUser(userId: string) {
     return { jobs_found: 0, jobs_inserted: 0, jobs_skipped: 0 };
   }
 
-  // 2. Fetch user's search seeds
   const { data: seeds } = await supabase
     .from("search_seeds")
     .select("query")
@@ -195,19 +192,16 @@ async function scoutForUser(userId: string) {
     return { jobs_found: 0, jobs_inserted: 0, jobs_skipped: 0 };
   }
 
-  // 3. Pick one seed per run (rotate)
   const seedIndex = Math.floor(Date.now() / (30 * 60 * 1000)) % seeds.length;
   const query = seeds[seedIndex].query;
 
   console.log(`[scout] User ${userId} → query: ${query}`);
 
-  // 4. Search with Firecrawl
   const results = await searchJobs(query);
   let jobsFound = results.length;
   let jobsInserted = 0;
   let jobsSkipped = 0;
 
-  // 5. Process each result
   for (const result of results) {
     const rawUrl = result.url || result.sourceURL || "";
     const normalizedUrl = normalizeUrl(rawUrl);
@@ -216,7 +210,6 @@ async function scoutForUser(userId: string) {
 
     const { company, role } = parseTitle(title, rawUrl);
 
-    // Pre-filter 1: Already seen by this user?
     const { data: existing } = await supabase
       .from("jobs")
       .select("id")
@@ -224,18 +217,9 @@ async function scoutForUser(userId: string) {
       .eq("job_url_normalized", normalizedUrl)
       .maybeSingle();
 
-    if (existing) {
-      jobsSkipped++;
-      continue;
-    }
+    if (existing) { jobsSkipped++; continue; }
+    if (!rawText || rawText.length < 100) { jobsSkipped++; continue; }
 
-    // Pre-filter 2: Skip if no meaningful content
-    if (!rawText || rawText.length < 100) {
-      jobsSkipped++;
-      continue;
-    }
-
-    // Pre-filter 3: User already rejected this company?
     const { data: rejected } = await supabase
       .from("jobs")
       .select("id")
@@ -244,21 +228,12 @@ async function scoutForUser(userId: string) {
       .eq("status", "rejected")
       .maybeSingle();
 
-    if (rejected) {
-      jobsSkipped++;
-      continue;
-    }
+    if (rejected) { jobsSkipped++; continue; }
 
-    // 6. Score with Grok using THIS user's profile
     const { score, reason } = await scoreJob(rawText, company, role, profile);
 
-    // 7. Skip if score below 7
-    if (score < 7) {
-      jobsSkipped++;
-      continue;
-    }
+    if (score < 7) { jobsSkipped++; continue; }
 
-    // 8. Insert job for this user
     const { data: newJob } = await supabase
       .from("jobs")
       .insert({
@@ -278,14 +253,14 @@ async function scoutForUser(userId: string) {
 
     jobsInserted++;
 
-    // 9. Notify if score 8+
     if (score >= 8 && newJob) {
       await notifyUser(userId, newJob);
     }
   }
 
-  // 10. Log scout run
+  // FIX 2: added user_id to scout_runs insert
   await supabase.from("scout_runs").insert({
+    user_id: userId,
     jobs_found: jobsFound,
     jobs_inserted: jobsInserted,
     jobs_skipped_duplicate: jobsSkipped,
@@ -295,7 +270,6 @@ async function scoutForUser(userId: string) {
   return { jobs_found: jobsFound, jobs_inserted: jobsInserted, jobs_skipped: jobsSkipped };
 }
 
-// --- Main handler ---
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -317,11 +291,10 @@ Deno.serve(async (req) => {
 
     const result = await scoutForUser(userId);
 
-    // Update last_scouted_at
     await supabase
       .from("profiles")
       .update({ last_scouted_at: new Date().toISOString() })
-      .eq("id", userId);
+      .eq("user_id", userId);
 
     return new Response(JSON.stringify({ success: true, ...result }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -10,8 +10,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const GROK_PRO_API_KEY = Deno.env.get("GROK_PRO_API_KEY")!;
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+    const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -44,7 +43,7 @@ Deno.serve(async (req) => {
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user_id)
+      .eq("user_id", user_id)
       .single();
 
     if (!profile) {
@@ -69,21 +68,25 @@ Deno.serve(async (req) => {
     const skills = profile.skills?.join(", ") || "";
     const titles = profile.preferred_titles?.join(", ") || "";
 
-    // Step 1 — Generate tailored resume JSON with Claude Haiku
-    const resumeRes = await fetch("https://api.anthropic.com/v1/messages", {
+    // Step 1 — Generate tailored resume JSON with GPT-4o
+    const resumeRes = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${GITHUB_TOKEN}`,
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5",
+        model: "gpt-4o",
         max_tokens: 1500,
+        response_format: { type: "json_object" },
         messages: [
           {
+            role: "system",
+            content: "You are an expert resume writer. Return only valid JSON, no markdown.",
+          },
+          {
             role: "user",
-            content: `You are an expert resume writer. Tailor this candidate's resume for the specific job below.
+            content: `Tailor this candidate's resume for the specific job below.
 
 CANDIDATE:
 Name: ${profile.full_name}
@@ -99,7 +102,7 @@ Company: ${job.company}
 Role: ${job.role}
 Description: ${(job.raw_text || "").slice(0, 2000)}
 
-Return ONLY a JSON object in this exact format, no markdown:
+Return ONLY a JSON object in this exact format:
 {
   "name": "candidate full name",
   "email": "email",
@@ -136,7 +139,7 @@ Return ONLY a JSON object in this exact format, no markdown:
     });
 
     const resumeData = await resumeRes.json();
-    const resumeText = resumeData.content?.[0]?.text || "{}";
+    const resumeText = resumeData.choices?.[0]?.message?.content || "{}";
 
     let resumeJson;
     try {
@@ -146,15 +149,15 @@ Return ONLY a JSON object in this exact format, no markdown:
       resumeJson = match ? JSON.parse(match[0]) : {};
     }
 
-    // Step 2 — Generate cover letter with Grok 4.3
-    const coverRes = await fetch("https://api.x.ai/v1/chat/completions", {
+    // Step 2 — Generate cover letter with GPT-4o
+    const coverRes = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${GROK_PRO_API_KEY}`,
+        "Authorization": `Bearer ${GITHUB_TOKEN}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "grok-3",
+        model: "gpt-4o",
         max_tokens: 800,
         temperature: 0.7,
         messages: [
