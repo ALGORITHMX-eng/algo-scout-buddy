@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -24,7 +24,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Decode base64 resume to plain text for GPT-4o
     const resumeText = atob(resumeBase64);
 
     const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
@@ -44,30 +43,15 @@ Deno.serve(async (req) => {
           },
           {
             role: "user",
-            content: `Extract all information from this resume and return ONLY a JSON object:
-{
-  "full_name": "candidate name",
-  "email": "email address",
-  "phone": "phone number",
-  "location": "city, country",
-  "linkedin": "linkedin url or empty string",
-  "github": "github url or empty string",
-  "portfolio": "portfolio url or empty string",
-  "years_experience": 3,
-  "skills": ["skill1", "skill2", "skill3"],
-  "preferred_titles": ["title1", "title2"],
-  "experience_summary": "2-3 sentence summary of background",
-  "raw_resume_text": "full plain text of entire resume"
-}
-
-Resume content:
-${resumeText}`,
+            content: `Extract all information from this resume and return ONLY a JSON object with these fields: full_name, email, phone, location, linkedin, github, portfolio, years_experience (number), skills (array of strings), preferred_titles (array of strings), experience_summary (2-3 sentences), raw_resume_text (full text). Resume: ${resumeText}`,
           },
         ],
       }),
     });
 
     const data = await res.json();
+    console.log("GPT status:", res.status, JSON.stringify(data).slice(0, 300));
+
     const text = data.choices?.[0]?.message?.content || "{}";
 
     let parsed: Record<string, any> = {};
@@ -80,7 +64,8 @@ ${resumeText}`,
 
     const { error: upsertError } = await supabase.from("profiles").upsert(
       {
-        user_id,
+        id: user_id,
+        user_id: user_id,
         full_name: parsed.full_name || "",
         email: parsed.email || "",
         phone: parsed.phone || "",
@@ -95,7 +80,7 @@ ${resumeText}`,
         raw_resume_text: parsed.raw_resume_text || "",
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "user_id" }
+      { onConflict: "id" }
     );
 
     if (upsertError) {
@@ -111,7 +96,7 @@ ${resumeText}`,
     });
 
   } catch (e) {
-    console.error("parse-resume error:", e);
+    console.error("parse-resume error:", e instanceof Error ? e.message : e);
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

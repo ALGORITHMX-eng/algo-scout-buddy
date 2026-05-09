@@ -6,6 +6,13 @@ import {
   ShieldCheck, Upload, FileText, Loader2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import * as pdfjsLib from "pdfjs-dist";
+
+// Point to the pdfjs worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 const slides = [
   {
@@ -46,6 +53,24 @@ const slides = [
   },
 ];
 
+// Extract plain text from PDF using pdfjs
+async function extractTextFromPDF(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const textParts: string[] = [];
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map((item: any) => item.str)
+      .join(" ");
+    textParts.push(pageText);
+  }
+
+  return textParts.join("\n");
+}
+
 const Onboarding = () => {
   const [current, setCurrent] = useState(0);
   const [showUpload, setShowUpload] = useState(false);
@@ -70,6 +95,10 @@ const Onboarding = () => {
       setUploadError("Please upload a PDF file");
       return;
     }
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError("File too large — max 10MB");
+      return;
+    }
 
     setUploading(true);
     setUploadError("");
@@ -78,23 +107,21 @@ const Onboarding = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) throw new Error("Not logged in");
 
-      // Convert to base64
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // Extract text from PDF (GPT-4o reads text, not binary PDF)
+      const resumeText = await extractTextFromPDF(file);
 
-      // Call parse-resume
+      if (!resumeText || resumeText.trim().length < 50) {
+        throw new Error("Could not extract text from PDF. Is it a scanned image PDF?");
+      }
+
+      // Send as base64 encoded text (not raw PDF bytes)
+      const resumeBase64 = btoa(unescape(encodeURIComponent(resumeText)));
+
       const { data, error } = await supabase.functions.invoke("parse-resume", {
         body: {
           user_id: session.user.id,
-          resumeBase64: base64,
-          mimeType: "application/pdf",
+          resumeBase64,
+          mimeType: "text/plain",
         },
       });
 
@@ -117,7 +144,6 @@ const Onboarding = () => {
   const finish = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user && !uploaded) {
-      // Generate seeds even without resume
       await supabase.functions.invoke("generate-seeds", {
         body: { user_id: session.user.id },
       }).catch(console.error);
@@ -126,14 +152,10 @@ const Onboarding = () => {
   };
 
   const next = () => {
-    if (isLast) {
-      setShowUpload(true);
-      return;
-    }
+    if (isLast) { setShowUpload(true); return; }
     setCurrent((p) => p + 1);
   };
 
-  // Resume upload screen
   if (showUpload) {
     return (
       <div className="flex min-h-screen flex-col bg-background">

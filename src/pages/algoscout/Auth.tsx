@@ -1,3 +1,6 @@
+import * as pdfjsLib from "pdfjs-dist";
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -42,6 +45,9 @@ const Auth = () => {
   const navigate = useNavigate();
 
   // Check if already logged in
+const justSignedUp = useRef(false);
+
+
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
@@ -79,6 +85,8 @@ const Auth = () => {
         toast({ title: error.message, variant: "destructive" });
         return;
       }
+      justSignedUp.current = true;
+setStep("resume-choice");
       // After signup, move to resume choice (profile will be created after onboarding)
       setStep("resume-choice");
     } else {
@@ -99,46 +107,51 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin + "/algoscout/onboarding" },
+      options: { redirectTo: window.location.origin + "/algoscout" },
     });
     if (error) toast({ title: error.message, variant: "destructive" });
   };
 
   // ── Path A: Upload resume ──
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadedFile(file);
-    setExtracting(true);
+  import * as pdfjsLib from "pdfjs-dist";
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
+const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  setUploadedFile(file);
+  setExtracting(true);
 
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = (reader.result as string).split(",")[1];
-        const { data, error } = await supabase.functions.invoke("parse-resume", {
-          body: {
-            user_id: session.user.id,
-            resumeBase64: base64,
-            mimeType: file.type,
-          },
-        });
-        if (error) throw error;
-        const keywords = data?.keywords || data?.skills || [
-          "JavaScript", "React", "TypeScript", "Node.js", "REST APIs",
-        ];
-        setExtractedKeywords(Array.isArray(keywords) ? keywords : []);
-        setExtracting(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err: any) {
-      console.error(err);
-      toast({ title: "Could not parse resume", variant: "destructive" });
-      setExtracting(false);
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error("Not authenticated");
+
+    // Extract text from PDF on frontend
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      fullText += content.items.map((item: any) => item.str).join(" ") + "\n";
     }
-  };
+
+    // Send plain text as base64
+    const base64 = btoa(unescape(encodeURIComponent(fullText)));
+
+    const { data, error } = await supabase.functions.invoke("parse-resume", {
+      body: { user_id: session.user.id, resumeBase64: base64, mimeType: "text/plain" },
+    });
+    if (error) throw error;
+    const keywords = data?.profile?.skills || [];
+    setExtractedKeywords(Array.isArray(keywords) ? keywords : []);
+    setExtracting(false);
+  } catch (err: any) {
+    console.error(err);
+    toast({ title: "Could not parse resume", variant: "destructive" });
+    setExtracting(false);
+  }
+};
 
   const confirmKeywords = async () => {
     // Create profile with extracted skills
