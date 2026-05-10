@@ -369,16 +369,15 @@ export default function AlgoDashboard() {
     if (!user) return;
     setScanning(true);
     try {
-      const { data, error } = await supabase.functions.invoke("trigger-scout", {
+      const { error } = await supabase.functions.invoke("trigger-scout", {
         body: {},
       });
       if (error) throw error;
-      if (data.jobs_inserted > 0) {
-        toast.success(`Found ${data.jobs_inserted} new job${data.jobs_inserted > 1 ? "s" : ""}!`);
-      } else {
-        toast.info("Scan complete — no new matches this round.");
-      }
-      await fetchJobs();
+      toast.success("Scanning in background — new jobs will appear shortly!");
+      // Wait 30s then refresh
+      setTimeout(async () => {
+        await fetchJobs();
+      }, 30000);
     } catch (err: any) {
       toast.error(err?.message || "Scan failed");
     } finally {
