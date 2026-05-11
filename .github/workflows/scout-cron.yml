@@ -1,0 +1,33 @@
+name: AlgoScout Cron
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Scout
+        run: |
+          curl -s -X POST \
+            https://ijmtttfdhzwjigeedgxd.supabase.co/functions/v1/trigger-scout \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -d '{}' \
+            --max-time 10
+
+  refresh-seeds:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Refresh Seeds
+        run: |
+          curl -s -X POST \
+            https://ijmtttfdhzwjigeedgxd.supabase.co/functions/v1/generate-seeds \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -d '{"user_id": "c6b5ce33-3782-4012-85fa-07d39eff2bdd"}' \
+            --max-time 30
