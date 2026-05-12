@@ -4,7 +4,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SCOUT_SECRET = Deno.env.get("SCOUT_SECRET")!;
-const CRON_SECRET = Deno.env.get("CRON_SECRET")!; // new — add this to your edge function secrets
+const CRON_SECRET = Deno.env.get("CRON_SECRET")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,24 +13,9 @@ const corsHeaders = {
 
 const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// ── existing pipeline logic (unchanged) ──────────────────────────────────────
-async function run(userId: string, skipSeeds = false) {
-  if (!skipSeeds) {
-    const seedsRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-seeds`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      },
-      body: JSON.stringify({ user_id: userId }),
-    });
-    const seedsData = await seedsRes.json();
-    if (!seedsRes.ok || !seedsData.success) {
-      throw new Error(`Seed generation failed: ${seedsData.error || "unknown"}`);
-    }
-  }
-
-  await fetch(`${SUPABASE_URL}/functions/v1/scout`, {
+// ── existing pipeline logic ───────────────────────────────────────────────────
+async function run(userId: string) {
+  const seedsRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-seeds`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -42,9 +27,9 @@ async function run(userId: string, skipSeeds = false) {
   if (!seedsRes.ok || !seedsData.success) {
     throw new Error(`Seed generation failed: ${seedsData.error || "unknown"}`);
   }
-  console.log(`[trigger-scout] ${seedsData.seeds.length} seeds generated`);
+  console.log(`[trigger-scout] ${seedsData.seeds?.length || 0} seeds generated`);
 
-  await fetch(`${SUPABASE_URL}/functions/v1/scout`, {
+  const scoutRes = await fetch(`${SUPABASE_URL}/functions/v1/scout`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -53,12 +38,13 @@ async function run(userId: string, skipSeeds = false) {
     },
     body: JSON.stringify({ user_id: userId }),
   });
-  console.log(`[trigger-scout] Scout triggered for ${userId}`);
+  const scoutData = await scoutRes.json();
+  console.log(`[trigger-scout] Scout done for ${userId}:`, scoutData);
+  return scoutData;
 }
 
-// ── NEW: scheduler — runs all due users ──────────────────────────────────────
+// ── scheduler: runs all due users ────────────────────────────────────────────
 async function runScheduler() {
-  // 1. fetch all users due right now (max 50 at a time)
   const { data: dueUsers, error } = await serviceClient
     .from("user_schedules")
     .select("user_id, scan_interval")
@@ -68,19 +54,17 @@ async function runScheduler() {
 
   if (error) throw new Error(`Failed to fetch due users: ${error.message}`);
   if (!dueUsers || dueUsers.length === 0) {
-    console.log("[scheduler] No users due. Exiting.");
+    console.log("[scheduler] No users due.");
     return { ran: 0 };
   }
 
   console.log(`[scheduler] ${dueUsers.length} users due`);
 
-  // 2. run pipeline + update next_run_time for each user
   await Promise.allSettled(
     dueUsers.map(async ({ user_id, scan_interval }) => {
       try {
-        await run(user_id, true); // skip seed generation on cron
+        await run(user_id);
 
-        // update next_run_time = now + scan_interval
         await serviceClient
           .from("user_schedules")
           .update({
@@ -101,15 +85,10 @@ async function runScheduler() {
   return { ran: dueUsers.length };
 }
 
-// converts Postgres interval string → milliseconds
-// handles: "30 minutes", "2 hours", "24 hours", "01:30:00" etc.
 function intervalToMs(interval: string): number {
-  if (!interval) return 24 * 60 * 60 * 1000; // default 24h
-
+  if (!interval) return 24 * 60 * 60 * 1000;
   const hours = interval.match(/(\d+)\s*hour/)?.[1];
   const minutes = interval.match(/(\d+)\s*min/)?.[1];
-
-  // handle "HH:MM:SS" format Postgres sometimes returns
   const hms = interval.match(/^(\d+):(\d+):(\d+)$/);
   if (hms) {
     return (
@@ -118,7 +97,6 @@ function intervalToMs(interval: string): number {
       parseInt(hms[3]) * 1000
     );
   }
-
   return (
     (parseInt(hours || "0") * 3600000) +
     (parseInt(minutes || "0") * 60000) ||
@@ -133,17 +111,25 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const cronSecret = req.headers.get("x-cron-secret");
 
-  // ── Path 1: cron-job.org calls this with the cron secret ──
+  // ── Path 1: GitHub Actions / cron hits this with cron secret ──
   if (cronSecret === CRON_SECRET) {
-    // @ts-ignore
-    EdgeRuntime.waitUntil(runScheduler().catch(console.error));
-    return new Response(
-      JSON.stringify({ success: true, message: "Scheduler started" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    try {
+      // AWAIT directly — no waitUntil — so GitHub Actions waits for full result
+      const result = await runScheduler();
+      return new Response(
+        JSON.stringify({ success: true, ...result }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    } catch (err: any) {
+      console.error("[scheduler] error:", err);
+      return new Response(
+        JSON.stringify({ success: false, error: err.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
   }
 
-  // ── Path 2: user triggers their own scout manually (existing behaviour) ──
+  // ── Path 2: user triggers their own scout manually ──
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.replace("Bearer ", "");
   let userId = body.user_id;
@@ -163,6 +149,7 @@ Deno.serve(async (req) => {
     });
   }
 
+  // For manual user triggers keep it background so UI stays snappy
   // @ts-ignore
   EdgeRuntime.waitUntil(run(userId).catch(console.error));
   return new Response(

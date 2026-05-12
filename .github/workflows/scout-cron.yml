@@ -18,8 +18,9 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -d '{}' \
-            --max-time 300 \
-            --no-buffer
+            --max-time 540 \
+            --no-buffer \
+            -w "\nHTTP Status: %{http_code}\nTime: %{time_total}s\n"
 
   refresh-seeds:
     runs-on: ubuntu-latest
@@ -33,4 +34,5 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -d '{"user_id": "c6b5ce33-3782-4012-85fa-07d39eff2bdd"}' \
-            --max-time 120
+            --max-time 120 \
+            -w "\nHTTP Status: %{http_code}\n"
