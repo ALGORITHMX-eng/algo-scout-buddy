@@ -9,6 +9,7 @@ on:
 jobs:
   scout:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Trigger Scout
         run: |
@@ -17,10 +18,12 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -d '{}' \
-            --max-time 10
+            --max-time 300 \
+            --no-buffer
 
   refresh-seeds:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Refresh Seeds
@@ -30,4 +33,4 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -d '{"user_id": "c6b5ce33-3782-4012-85fa-07d39eff2bdd"}' \
-            --max-time 30
+            --max-time 120

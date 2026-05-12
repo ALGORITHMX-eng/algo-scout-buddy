@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const JINA_API_KEY = Deno.env.get("JINA_API_KEY")!;
+const EXA_API_KEY = Deno.env.get("EXA_API_KEY")!;
 const SCRAPEDO_API_KEY = Deno.env.get("SCRAPEDO_API_KEY")!;
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -29,33 +29,41 @@ function normalizeUrl(url: string): string {
   }
 }
 
-// ─── Step 1: Jina Search ──────────────────────────────────────────────────────
-async function jinaSearch(query: string): Promise<Array<{ url: string; title: string; content: string }>> {
+// ─── Step 1: Exa Search (search + content in one call) ────────────────────────
+async function exaSearch(query: string): Promise<Array<{ url: string; title: string; content: string }>> {
   try {
-    const res = await fetch(`https://s.jina.ai/?q=${encodeURIComponent(query)}`, {
+    const res = await fetch("https://api.exa.ai/search", {
+      method: "POST",
       headers: {
-        "Accept": "application/json",
-        "X-Return-Format": "markdown",
-        "Authorization": `Bearer ${JINA_API_KEY}`,
+        "Content-Type": "application/json",
+        "x-api-key": EXA_API_KEY,
       },
+      body: JSON.stringify({
+        query,
+        type: "auto",
+        numResults: 10,
+        contents: {
+          text: { maxCharacters: 3000 },
+        },
+      }),
     });
     if (!res.ok) {
-      console.error(`[jina-search] failed: ${res.status}`);
+      console.error(`[exa] failed: ${res.status} ${await res.text()}`);
       return [];
     }
     const data = await res.json();
-    return (data.data || []).map((r: any) => ({
+    return (data.results || []).map((r: any) => ({
       url: r.url || "",
       title: r.title || "",
-      content: (r.content || r.description || "").slice(0, 3000),
+      content: (r.text || "").slice(0, 3000),
     }));
   } catch (err) {
-    console.error("[jina-search] error:", err);
+    console.error("[exa] error:", err);
     return [];
   }
 }
 
-// ─── Step 2: Scrape.do Fallback ───────────────────────────────────────────────
+// ─── Step 2: Scrape.do Fallback (when Exa content is too short) ───────────────
 async function scrapeDoExtract(url: string): Promise<string> {
   try {
     const res = await fetch(
@@ -205,10 +213,10 @@ async function scoutForUser(userId: string) {
 
   console.log(`[scout] ${seeds.length} seeds for user ${userId}`);
 
-  // Search all seeds in parallel
-  const allResultsNested = await Promise.all(seeds.map((s) => jinaSearch(s.query)));
+  // Search all seeds in parallel via Exa
+  const allResultsNested = await Promise.all(seeds.map((s) => exaSearch(s.query)));
   const allResults = allResultsNested.flat();
-  console.log(`[scout] ${allResults.length} raw results from Jina Search`);
+  console.log(`[scout] ${allResults.length} raw results from Exa`);
 
   // Dedup + block domains
   const seen = new Set<string>();
@@ -243,10 +251,10 @@ async function scoutForUser(userId: string) {
         .maybeSingle();
       if (existing) { totalSkipped++; return; }
 
-      // Use Jina content, fallback to Scrape.do if too short
+      // Use Exa content, fallback to Scrape.do if too short
       let content = result.content;
       if (!content || content.length < 200) {
-        console.log(`[scout] Jina short → Scrape.do: ${rawUrl.slice(0, 50)}`);
+        console.log(`[scout] Exa content short → Scrape.do: ${rawUrl.slice(0, 50)}`);
         content = await scrapeDoExtract(rawUrl);
       }
       if (!content || content.length < 100) {
