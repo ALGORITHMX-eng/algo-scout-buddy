@@ -2,6 +2,8 @@ project_id = "qgjbpkdjisrvdetyhxkd"
 
 [functions.algoscout-extract-job]
 verify_jwt = false
+[functions.trigger-scout]
+verify_jwt = false
 
 [functions.score-job]
 enabled = true

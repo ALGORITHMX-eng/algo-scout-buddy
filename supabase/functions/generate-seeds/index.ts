@@ -27,7 +27,8 @@ Deno.serve(async (req) => {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
-      .eq("user_id", user_id)
+      .or(`user_id.eq.${user_id},id.eq.${user_id}`)
+      
       .single();
 
     if (profileError || !profile) {
@@ -72,11 +73,15 @@ Location: ${location}
 Work Preference: ${workPref}
 
 RULES:
-- Each query should target different job boards and sources
-- Mix these sources: site:wellfound.com, site:remotive.com, site:workatastartup.com, site:x.com, site:linkedin.com/jobs
-- Make queries specific to their skills and roles
+- Write natural Google search queries like a recruiter would search
+- Include job board names naturally in the query: "wellfound", "remotive", "workatastartup", "greenhouse", "lever"
+- Include hiring signals in queries: "hiring", "job opening", "we are looking for", "join our team"
 - Include "remote" in most queries
-- Vary the queries so they find different jobs
+- Do NOT use site: operator
+- Mix different angles: some by skill, some by role title, some by company type (startup, AI company, SaaS)
+- Vary the queries so they find different jobs across different boards
+- Example good query: "remote AI Engineer LangChain RAG startup hiring 2026 wellfound"
+- Example good query: "agentic AI systems architect remote job opening greenhouse"
 
 Return ONLY this JSON structure:
 {"queries": ["query 1", "query 2", "query 3", "query 4", "query 5", "query 6", "query 7", "query 8"]}`,
@@ -140,4 +145,4 @@ Return ONLY this JSON structure:
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+});const { data: profile, error: profileError } = await supabase

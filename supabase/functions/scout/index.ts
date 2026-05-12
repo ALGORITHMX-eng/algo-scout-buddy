@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY")!;
+const JINA_API_KEY = Deno.env.get("JINA_API_KEY")!;
+const SCRAPEDO_API_KEY = Deno.env.get("SCRAPEDO_API_KEY")!;
 const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -13,6 +14,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-scout-secret",
 };
 
+const BLOCKED_DOMAINS = [
+  "linkedin.com", "reddit.com", "youtube.com", "quora.com",
+  "medium.com", "substack.com", "twitter.com",
+];
+
 function normalizeUrl(url: string): string {
   try {
     const u = new URL(url);
@@ -23,64 +29,60 @@ function normalizeUrl(url: string): string {
   }
 }
 
-function parseTitle(title: string, url: string): { company: string; role: string } {
-  let role = title;
-  let company = "Unknown";
-
-  const atMatch = title.match(/^(.+?)\s+at\s+(.+?)(\s*[\|\-\–]|$)/i);
-  if (atMatch) {
-    role = atMatch[1].trim();
-    company = atMatch[2].trim();
-  } else {
-    const dashMatch = title.match(/^(.+?)\s*[-–]\s*(.+)$/);
-    if (dashMatch) {
-      company = dashMatch[1].trim();
-      role = dashMatch[2].trim();
-    } else {
-      try {
-        const domain = new URL(url).hostname.replace("www.", "").split(".")[0];
-        company = domain.charAt(0).toUpperCase() + domain.slice(1);
-      } catch {}
-    }
-  }
-
-  role = role.replace(/\[hiring\]/gi, "").replace(/^\s*[\|\-\–]\s*/, "").trim();
-  company = company.replace(/\[hiring\]/gi, "").trim();
-  return { company, role };
-}
-
-async function searchJobs(query: string): Promise<any[]> {
+// ─── Step 1: Jina Search ──────────────────────────────────────────────────────
+async function jinaSearch(query: string): Promise<Array<{ url: string; title: string; content: string }>> {
   try {
-    const res = await fetch("https://api.firecrawl.dev/v1/search", {
-      method: "POST",
+    const res = await fetch(`https://s.jina.ai/?q=${encodeURIComponent(query)}`, {
       headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${FIRECRAWL_API_KEY}`,
+        "Accept": "application/json",
+        "X-Return-Format": "markdown",
+        "Authorization": `Bearer ${JINA_API_KEY}`,
       },
-      body: JSON.stringify({
-        query,
-        limit: 8,
-        scrapeOptions: { formats: ["markdown"] },
-      }),
     });
+    if (!res.ok) {
+      console.error(`[jina-search] failed: ${res.status}`);
+      return [];
+    }
     const data = await res.json();
-    return data.data || [];
+    return (data.data || []).map((r: any) => ({
+      url: r.url || "",
+      title: r.title || "",
+      content: (r.content || r.description || "").slice(0, 3000),
+    }));
   } catch (err) {
-    console.error("Firecrawl error:", err);
+    console.error("[jina-search] error:", err);
     return [];
   }
 }
 
-async function scoreJob(
-  jobText: string,
-  company: string,
-  role: string,
-  profile: any
-): Promise<{ score: number; reason: string }> {
+// ─── Step 2: Scrape.do Fallback ───────────────────────────────────────────────
+async function scrapeDoExtract(url: string): Promise<string> {
   try {
-    const skills = profile.skills?.join(", ") || "Not specified";
-    const titles = profile.preferred_titles?.join(", ") || "Not specified";
+    const res = await fetch(
+      `https://api.scrape.do?token=${SCRAPEDO_API_KEY}&url=${encodeURIComponent(url)}&render=true&output=markdown`
+    );
+    if (!res.ok) return "";
+    return (await res.text()).slice(0, 3000);
+  } catch {
+    return "";
+  }
+}
 
+// ─── Step 3: One-Shot Analyze + Score ────────────────────────────────────────
+async function analyzeJob(
+  content: string,
+  title: string,
+  url: string,
+  profile: any,
+): Promise<{
+  is_real_job: boolean;
+  company: string;
+  role: string;
+  location: string;
+  score: number;
+  reason: string;
+} | null> {
+  try {
     const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
       headers: {
@@ -89,73 +91,88 @@ async function scoreJob(
       },
       body: JSON.stringify({
         model: "gpt-4o",
-        max_tokens: 200,
-        temperature: 0.1,
+        max_tokens: 800,
+        temperature: 0.3,
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: "You are ALGOscout, an AI job scoring engine. Return only valid JSON, no markdown.",
+            content: `You are ALGOscout, an elite AI job matching engine. Return only valid JSON, no markdown.
+When writing the reason field, write like a senior technical recruiter explaining the match — be specific, reference actual technologies and company details from the job content, not generic phrases.`,
           },
           {
             role: "user",
             content: `CANDIDATE PROFILE:
 Name: ${profile.full_name}
-Location: ${profile.location} — ${profile.work_preference || "remote"} only
-Years of Experience: ${profile.years_experience || "Not specified"}
-Skills: ${skills}
-Target Roles: ${titles}
-Experience Summary: ${profile.experience_summary || "Not provided"}
+Skills: ${profile.skills?.join(", ") || "Not specified"}
+Target Roles: ${profile.preferred_titles?.join(", ") || "Not specified"}
+Location: ${profile.location}
+Work Preference: ${profile.work_preference || "remote"}
+Experience: ${profile.years_experience} years
+Summary: ${profile.experience_summary || "Not provided"}
 
-SCORING RULES:
-- Score 9-10: Perfect match — role title matches exactly + 3+ skills match + remote
-- Score 7-8: Good match — most skills align + remote
-- Score 5-6: Partial match — some skills overlap
-- Score 1-4: Poor fit — few skills match
-- Score 0: Hard pass — on-site only, outsourcing farm, completely unrelated field
+JOB CONTENT:
+Title: ${title}
+URL: ${url}
+Content: ${content.slice(0, 2000)}
 
-SCORING LOGIC:
-1. Hard Pass → Score 0 if on-site only or outsourcing farm
-2. Base score = 4
-3. +2 per skill match (max 5 matches)
-4. +1 per bonus: AI startup, high-growth, emerging market, LLM infra
-5. Cap at 10
+STEP 1 — REALITY CHECK:
+Is this a real job posting? Set is_real_job=false if it is a tweet, blog post, developer profile, newsletter, article, or any content that is not actively hiring.
 
-JOB:
-Company: ${company}
-Role: ${role}
-Description: ${jobText.slice(0, 2000)}
+STEP 2 — EXTRACT:
+Pull out company name, exact job title, and location from the content.
 
-Respond ONLY in this JSON format:
-{"score": 8.5, "reason": "Strong match because..."}`,
+STEP 3 — SCORE using this exact logic:
+- Hard Pass → score=0 if: on-site only, outsourcing farm, completely unrelated field
+- Base score = 4
+- +2 for each skill match from candidate profile (max 5 skills = max +10, cap at 10)
+- +1 bonus if: AI startup, high-growth company, emerging market focus, LLM infrastructure
+- Final score capped at 10
+
+Score bands:
+- 9-10: Perfect — role matches exactly + 3 or more skills + remote
+- 7-8: Good — most skills align + remote friendly
+- 5-6: Partial — some skill overlap
+- 1-4: Poor — few skills match
+- 0: Hard pass — on-site only, outsourcing farm, or unrelated field
+
+Think step by step:
+1. List which exact skills from the candidate profile appear in the job content
+2. Count them
+3. Calculate: base(4) + skill_count x 2 + bonuses
+4. Output final JSON
+
+IMPORTANT: Calculate score mathematically. Do not round to a clean number. Each job gets a unique score based on actual skill matches counted one by one.
+
+For the reason field: write 2-3 sentences like a senior recruiter. Mention specific technologies from the job that match the candidate, the company type, and any standout positives or red flags. Be specific — do not write generic phrases like "good match" or "relevant experience".
+
+Return ONLY this JSON:
+{"is_real_job":true,"company":"Name","role":"Title","location":"Remote","score":7.5,"reason":"2-3 specific sentences about why this matches or doesn't."}`,
           },
         ],
       }),
     });
 
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || '{"score": 0, "reason": "Failed"}';
+    const text = data.choices?.[0]?.message?.content || "{}";
     try {
       return JSON.parse(text);
     } catch {
       const match = text.match(/\{[\s\S]*\}/);
-      return match ? JSON.parse(match[0]) : { score: 0, reason: "Parse error" };
+      return match ? JSON.parse(match[0]) : null;
     }
-  } catch {
-    return { score: 0, reason: "Scoring failed" };
+  } catch (err) {
+    console.error("[analyze] error:", err);
+    return null;
   }
 }
 
-// FIX 1: added Authorization header
+// ─── Notify ───────────────────────────────────────────────────────────────────
 async function notifyUser(userId: string, job: any) {
   try {
     const { data: subs } = await supabase
-      .from("push_subscriptions")
-      .select("*")
-      .eq("user_id", userId);
-
+      .from("push_subscriptions").select("*").eq("user_id", userId);
     if (!subs || subs.length === 0) return;
-
     await fetch(`${SUPABASE_URL}/functions/v1/notify`, {
       method: "POST",
       headers: {
@@ -166,122 +183,159 @@ async function notifyUser(userId: string, job: any) {
       body: JSON.stringify({ record: job }),
     });
   } catch (err) {
-    console.error("Notify error:", err);
+    console.error("[notify] error:", err);
   }
 }
 
+// ─── Main Scout ───────────────────────────────────────────────────────────────
 async function scoutForUser(userId: string) {
   const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
-
+    .from("profiles").select("*").eq("user_id", userId).single();
   if (!profile) {
-    console.error(`Profile not found for user ${userId}`);
+    console.error(`No profile: ${userId}`);
     return { jobs_found: 0, jobs_inserted: 0, jobs_skipped: 0 };
   }
 
   const { data: seeds } = await supabase
-    .from("search_seeds")
-    .select("query")
-    .eq("user_id", userId);
-
+    .from("search_seeds").select("query").eq("user_id", userId);
   if (!seeds || seeds.length === 0) {
-    console.log(`No search seeds for user ${userId}`);
+    console.log(`No seeds: ${userId}`);
     return { jobs_found: 0, jobs_inserted: 0, jobs_skipped: 0 };
   }
 
-  const seedIndex = Math.floor(Date.now() / (30 * 60 * 1000)) % seeds.length;
-  const query = seeds[seedIndex].query;
+  console.log(`[scout] ${seeds.length} seeds for user ${userId}`);
 
-  console.log(`[scout] User ${userId} → query: ${query}`);
+  // Search all seeds in parallel
+  const allResultsNested = await Promise.all(seeds.map((s) => jinaSearch(s.query)));
+  const allResults = allResultsNested.flat();
+  console.log(`[scout] ${allResults.length} raw results from Jina Search`);
 
-  const results = await searchJobs(query);
-  let jobsFound = results.length;
-  let jobsInserted = 0;
-  let jobsSkipped = 0;
+  // Dedup + block domains
+  const seen = new Set<string>();
+  const candidates = allResults.filter((r) => {
+    if (!r.url) return false;
+    const norm = normalizeUrl(r.url);
+    if (!norm || seen.has(norm)) return false;
+    seen.add(norm);
+    try {
+      const host = new URL(r.url).hostname;
+      return !BLOCKED_DOMAINS.some((b) => host.includes(b));
+    } catch { return false; }
+  });
 
-  for (const result of results) {
-    const rawUrl = result.url || result.sourceURL || "";
-    const normalizedUrl = normalizeUrl(rawUrl);
-    const rawText = result.markdown || result.content || "";
-    const title = result.title || result.metadata?.title || "";
+  console.log(`[scout] ${candidates.length} unique URLs after dedup/block`);
 
-    const { company, role } = parseTitle(title, rawUrl);
+  let totalInserted = 0;
+  let totalSkipped = 0;
 
-    const { data: existing } = await supabase
-      .from("jobs")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("job_url_normalized", normalizedUrl)
-      .maybeSingle();
+  // Process in batches of 3
+  for (let i = 0; i < candidates.length; i += 3) {
+    const batch = candidates.slice(i, i + 3);
+    await Promise.all(batch.map(async (result) => {
+      const rawUrl = result.url;
+      const normalizedUrl = normalizeUrl(rawUrl);
 
-    if (existing) { jobsSkipped++; continue; }
-    if (!rawText || rawText.length < 100) { jobsSkipped++; continue; }
+      // Skip duplicate in DB
+      const { data: existing } = await supabase
+        .from("jobs").select("id")
+        .eq("user_id", userId)
+        .eq("job_url_normalized", normalizedUrl)
+        .maybeSingle();
+      if (existing) { totalSkipped++; return; }
 
-    const { data: rejected } = await supabase
-      .from("jobs")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("company", company)
-      .eq("status", "rejected")
-      .maybeSingle();
+      // Use Jina content, fallback to Scrape.do if too short
+      let content = result.content;
+      if (!content || content.length < 200) {
+        console.log(`[scout] Jina short → Scrape.do: ${rawUrl.slice(0, 50)}`);
+        content = await scrapeDoExtract(rawUrl);
+      }
+      if (!content || content.length < 100) {
+        console.log(`[scout] SKIP no_content: ${rawUrl.slice(0, 50)}`);
+        totalSkipped++;
+        return;
+      }
 
-    if (rejected) { jobsSkipped++; continue; }
+      // One-shot analyze + score
+      const analysis = await analyzeJob(content, result.title, rawUrl, profile);
+      if (!analysis) { totalSkipped++; return; }
 
-    const { score, reason } = await scoreJob(rawText, company, role, profile);
+      if (!analysis.is_real_job) {
+        console.log(`[scout] SKIP not_a_job: ${result.title.slice(0, 50)}`);
+        totalSkipped++;
+        return;
+      }
 
-    if (score < 7) { jobsSkipped++; continue; }
+      if (analysis.score < 7) {
+        console.log(`[scout] SKIP score=${analysis.score}: ${analysis.company}`);
+        totalSkipped++;
+        return;
+      }
 
-    const { data: newJob } = await supabase
-      .from("jobs")
-      .insert({
-        user_id: userId,
-        job_url: rawUrl,
-        job_url_normalized: normalizedUrl,
-        company,
-        role,
-        raw_text: rawText,
-        score,
-        score_reason: reason,
-        status: "pending",
-        found_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+      // Skip rejected company
+      const { data: rejected } = await supabase
+        .from("jobs").select("id")
+        .eq("user_id", userId)
+        .eq("company", analysis.company)
+        .eq("status", "rejected")
+        .maybeSingle();
+      if (rejected) { totalSkipped++; return; }
 
-    jobsInserted++;
+      // Insert
+      const { data: newJob, error: insertError } = await supabase
+        .from("jobs")
+        .insert({
+          user_id: userId,
+          job_url: rawUrl,
+          job_url_normalized: normalizedUrl,
+          company: analysis.company,
+          role: analysis.role,
+          location: analysis.location,
+          raw_text: content,
+          score: analysis.score,
+          score_reason: analysis.reason,
+          status: "pending",
+          found_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-    if (score >= 8 && newJob) {
-      await notifyUser(userId, newJob);
-    }
+      if (insertError) {
+        console.error(`[scout] INSERT ERROR: ${insertError.message}`);
+        totalSkipped++;
+      } else {
+        console.log(`[scout] INSERTED: ${analysis.company} | score=${analysis.score}`);
+        totalInserted++;
+        if (analysis.score >= 8 && newJob) await notifyUser(userId, newJob);
+      }
+    }));
   }
 
-  // FIX 2: added user_id to scout_runs insert
   await supabase.from("scout_runs").insert({
     user_id: userId,
-    jobs_found: jobsFound,
-    jobs_inserted: jobsInserted,
-    jobs_skipped_duplicate: jobsSkipped,
+    jobs_found: allResults.length,
+    jobs_inserted: totalInserted,
+    jobs_skipped_duplicate: totalSkipped,
     error: null,
   });
 
-  return { jobs_found: jobsFound, jobs_inserted: jobsInserted, jobs_skipped: jobsSkipped };
+  await supabase.from("profiles")
+    .update({ last_scouted_at: new Date().toISOString() })
+    .eq("user_id", userId);
+
+  console.log(`[scout] DONE inserted=${totalInserted} skipped=${totalSkipped}`);
+  return { jobs_found: allResults.length, jobs_inserted: totalInserted, jobs_skipped: totalSkipped };
 }
 
+// ─── Handler ──────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const secret = req.headers.get("x-scout-secret");
-  if (secret !== SCOUT_SECRET) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  if (secret !== SCOUT_SECRET) return new Response("Unauthorized", { status: 401 });
 
   try {
     const body = await req.json().catch(() => ({}));
     const userId = body.user_id;
-
     if (!userId) {
       return new Response(JSON.stringify({ error: "user_id required" }), {
         status: 400,
@@ -289,17 +343,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    const result = await scoutForUser(userId);
+    // @ts-ignore
+    EdgeRuntime.waitUntil(scoutForUser(userId).catch(console.error));
 
-    await supabase
-      .from("profiles")
-      .update({ last_scouted_at: new Date().toISOString() })
-      .eq("user_id", userId);
-
-    return new Response(JSON.stringify({ success: true, ...result }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-
+    return new Response(
+      JSON.stringify({ success: true, message: "Scout started in background" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return new Response(JSON.stringify({ error: message }), {
