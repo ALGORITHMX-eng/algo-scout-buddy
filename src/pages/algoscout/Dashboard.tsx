@@ -23,6 +23,7 @@ type Job = {
   job_url: string | null;
   location: string | null;
   score_reason: string | null;
+  raw_text: string | null;
   description: string | null;
   resume: string | null;
   cover_letter: string | null;
@@ -129,13 +130,13 @@ function JobPanel({
           <div className="mb-3 text-[10px] uppercase tracking-wider text-muted-foreground">
             Job description
           </div>
-          {job.description ? (
-            <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/85">
-              {job.description}
-            </p>
-          ) : (
-            <p className="text-sm italic text-muted-foreground">No description available.</p>
-          )}
+          {(job.raw_text || job.description) ? (
+  <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/85">
+    {job.raw_text || job.description}
+  </p>
+) : (
+  <p className="text-sm italic text-muted-foreground">No description available.</p>
+)}
         </div>
 
         {/* Footer */}
