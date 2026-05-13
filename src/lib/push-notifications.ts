@@ -13,21 +13,17 @@ export const enablePushNotifications = async (): Promise<{ ok: boolean; message:
   }
 
   try {
-    // Register service worker
+    // Register SW and subscribe directly from the registration — no .ready()
     const reg = await navigator.serviceWorker.register("/sw.js");
-    await navigator.serviceWorker.ready;
 
-    // Subscribe to push
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: VAPID_PUBLIC_KEY,
     });
 
-    // Get current user
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { ok: false, message: "Not logged in." };
 
-    // Save subscription to Supabase
     const { error } = await supabase.from("push_subscriptions").upsert({
       user_id: user.id,
       endpoint: sub.endpoint,
