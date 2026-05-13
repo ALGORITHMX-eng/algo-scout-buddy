@@ -17,6 +17,22 @@ const corsHeaders = {
 const BLOCKED_DOMAINS = [
   "linkedin.com", "reddit.com", "youtube.com", "quora.com",
   "medium.com", "substack.com", "twitter.com",
+  "freelancer.com", "upwork.com", "fiverr.com",
+];
+
+// ─── Seniority keywords to hard-reject before calling GPT ─────────────────────
+const SENIORITY_BLACKLIST = [
+  "vp ", "vice president", "director of", "head of", "principal engineer",
+  "staff engineer", "distinguished engineer", "c-suite", "cto", "ceo", "coo",
+  "chief ", "svp", "evp", "managing director", "tech lead", "lead engineer",
+  "engineering manager", "engineering director",
+];
+
+// ─── On-site signals to reject when user wants remote ─────────────────────────
+const ONSITE_SIGNALS = [
+  "must be located in", "on-site required", "onsite required", "in-office",
+  "relocation required", "must relocate", "not remote", "no remote",
+  "office-based", "based in our", "work from our office",
 ];
 
 function normalizeUrl(url: string): string {
@@ -29,7 +45,36 @@ function normalizeUrl(url: string): string {
   }
 }
 
-// ─── Step 1: Exa Search (search + content in one call) ────────────────────────
+// ─── Pre-filter: run BEFORE calling GPT to save API costs ─────────────────────
+function shouldSkipEarly(
+  title: string,
+  content: string,
+  profile: any,
+): { skip: boolean; reason: string } {
+  const titleLower = title.toLowerCase();
+  const contentLower = content.toLowerCase();
+
+  // 1. Seniority check — skip if title has lead/director/VP level keywords
+  //    unless candidate has 5+ years experience
+  if (profile.years_experience < 5) {
+    const isTooSenior = SENIORITY_BLACKLIST.some((k) => titleLower.includes(k));
+    if (isTooSenior) {
+      return { skip: true, reason: `seniority_mismatch: ${title}` };
+    }
+  }
+
+  // 2. Location check — if user wants remote, reject clear on-site jobs
+  if (profile.work_preference === "remote") {
+    const isOnSite = ONSITE_SIGNALS.some((s) => contentLower.includes(s));
+    if (isOnSite) {
+      return { skip: true, reason: `onsite_rejected: ${title}` };
+    }
+  }
+
+  return { skip: false, reason: "" };
+}
+
+// ─── Step 1: Exa Search ────────────────────────────────────────────────────────
 async function exaSearch(query: string): Promise<Array<{ url: string; title: string; content: string }>> {
   try {
     const res = await fetch("https://api.exa.ai/search", {
@@ -63,7 +108,7 @@ async function exaSearch(query: string): Promise<Array<{ url: string; title: str
   }
 }
 
-// ─── Step 2: Scrape.do Fallback (when Exa content is too short) ───────────────
+// ─── Step 2: Scrape.do Fallback ───────────────────────────────────────────────
 async function scrapeDoExtract(url: string): Promise<string> {
   try {
     const res = await fetch(
@@ -76,7 +121,7 @@ async function scrapeDoExtract(url: string): Promise<string> {
   }
 }
 
-// ─── Step 3: One-Shot Analyze + Score ────────────────────────────────────────
+// ─── Step 3: Analyze + Score (stricter prompt) ───────────────────────────────
 async function analyzeJob(
   content: string,
   title: string,
@@ -100,13 +145,12 @@ async function analyzeJob(
       body: JSON.stringify({
         model: "gpt-4o",
         max_tokens: 800,
-        temperature: 0.3,
+        temperature: 0.1,
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: `You are ALGOscout, an elite AI job matching engine. Return only valid JSON, no markdown.
-When writing the reason field, write like a senior technical recruiter explaining the match — be specific, reference actual technologies and company details from the job content, not generic phrases.`,
+            content: `You are ALGOscout, a brutally honest AI job matching engine. Your job is to protect the candidate from wasting time on roles they are NOT qualified for. You must be strict and accurate — do NOT inflate scores. Return only valid JSON, no markdown.`,
           },
           {
             role: "user",
@@ -114,9 +158,9 @@ When writing the reason field, write like a senior technical recruiter explainin
 Name: ${profile.full_name}
 Skills: ${profile.skills?.join(", ") || "Not specified"}
 Target Roles: ${profile.preferred_titles?.join(", ") || "Not specified"}
-Location: ${profile.location}
+Location: ${profile.location || "Not specified"}
 Work Preference: ${profile.work_preference || "remote"}
-Experience: ${profile.years_experience} years
+Years of Experience: ${profile.years_experience} years
 Summary: ${profile.experience_summary || "Not provided"}
 
 JOB CONTENT:
@@ -124,38 +168,57 @@ Title: ${title}
 URL: ${url}
 Content: ${content.slice(0, 2000)}
 
+---
+
 STEP 1 — REALITY CHECK:
 Is this a real job posting? Set is_real_job=false if it is a tweet, blog post, developer profile, newsletter, article, or any content that is not actively hiring.
 
 STEP 2 — EXTRACT:
 Pull out company name, exact job title, and location from the content.
 
-STEP 3 — SCORE using this exact logic:
-- Hard Pass → score=0 if: on-site only, outsourcing farm, completely unrelated field
-- Base score = 4
-- +2 for each skill match from candidate profile (max 5 skills = max +10, cap at 10)
-- +1 bonus if: AI startup, high-growth company, emerging market focus, LLM infrastructure
-- Final score capped at 10
+STEP 3 — STRICT SCORING RULES:
 
-Score bands:
-- 9-10: Perfect — role matches exactly + 3 or more skills + remote
-- 7-8: Good — most skills align + remote friendly
-- 5-6: Partial — some skill overlap
-- 1-4: Poor — few skills match
-- 0: Hard pass — on-site only, outsourcing farm, or unrelated field
+Start at base score = 5.
 
-Think step by step:
-1. List which exact skills from the candidate profile appear in the job content
-2. Count them
-3. Calculate: base(4) + skill_count x 2 + bonuses
-4. Output final JSON
+ADDITIONS (add points):
+- +1 for each skill from candidate profile that appears in job requirements (max +4, count carefully)
+- +0.5 if company is an AI startup or emerging tech company
+- +0.5 if role is fully remote and candidate prefers remote
 
-IMPORTANT: Calculate score mathematically. Do not round to a clean number. Each job gets a unique score based on actual skill matches counted one by one.
+HARD DEDUCTIONS (subtract points, these are serious):
+- -3 if job requires significantly more years of experience than candidate has (e.g. job wants 7yrs, candidate has 2yrs)
+- -2 if job title seniority is above candidate level (Lead, Principal, Staff, Architect, Director, VP)
+- -2 if job requires tools/technologies the candidate has NO experience with (e.g. Kafka, Kubernetes, Docker, AWS if not on resume)
+- -2 if job requires on-site or specific city relocation and candidate prefers remote
+- -1 if job is in a country that typically requires visa/work permit and candidate is in Nigeria
+- -1 for each major missing requirement (max -3)
 
-For the reason field: write 2-3 sentences like a senior recruiter. Mention specific technologies from the job that match the candidate, the company type, and any standout positives or red flags. Be specific — do not write generic phrases like "good match" or "relevant experience".
+HARD RULES:
+- Score CANNOT be above 7 if candidate is missing 2 or more critical requirements
+- Score CANNOT be above 5 if candidate is missing 3 or more critical requirements  
+- Score CANNOT be above 3 if years of experience gap is more than 4 years
+- Score of 9-10 is ONLY for roles where candidate meets 90%+ of requirements
+- Do NOT give high scores just because some keywords match — gaps matter MORE than matches
+
+FINAL SCORE BANDS:
+- 9-10: Near-perfect fit — candidate meets almost all requirements
+- 7-8: Good fit — candidate meets most requirements, minor gaps
+- 5-6: Partial fit — candidate meets some requirements, notable gaps
+- 3-4: Poor fit — significant gaps in experience or skills
+- 0-2: Hard pass — major mismatch in experience, seniority, or location
+
+STEP 4 — SHOW YOUR WORK:
+Before giving the final score, think through:
+1. Which exact skills from candidate profile appear in the job? List them.
+2. What critical requirements does the candidate LACK? List them.
+3. What is the experience gap (candidate years vs job requirement)?
+4. Apply additions and deductions mathematically.
+5. Apply hard rules if triggered.
+
+For the reason field: write 2-3 sentences like a brutally honest senior recruiter. Mention specific skill matches AND specific gaps. Never write generic phrases. Be specific about what the candidate is missing.
 
 Return ONLY this JSON:
-{"is_real_job":true,"company":"Name","role":"Title","location":"Remote","score":7.5,"reason":"2-3 specific sentences about why this matches or doesn't."}`,
+{"is_real_job":true,"company":"Name","role":"Title","location":"Remote","score":6.5,"reason":"2-3 brutally honest sentences about match quality and specific gaps."}`,
           },
         ],
       }),
@@ -212,6 +275,7 @@ async function scoutForUser(userId: string) {
   }
 
   console.log(`[scout] ${seeds.length} seeds for user ${userId}`);
+  console.log(`[scout] work_preference=${profile.work_preference} years_experience=${profile.years_experience}`);
 
   // Search all seeds in parallel via Exa
   const allResultsNested = await Promise.all(seeds.map((s) => exaSearch(s.query)));
@@ -259,6 +323,14 @@ async function scoutForUser(userId: string) {
       }
       if (!content || content.length < 100) {
         console.log(`[scout] SKIP no_content: ${rawUrl.slice(0, 50)}`);
+        totalSkipped++;
+        return;
+      }
+
+      // ── PRE-FILTER: check before calling GPT (saves API costs) ──
+      const { skip, reason } = shouldSkipEarly(result.title, content, profile);
+      if (skip) {
+        console.log(`[scout] PRE-FILTER SKIP ${reason}`);
         totalSkipped++;
         return;
       }
