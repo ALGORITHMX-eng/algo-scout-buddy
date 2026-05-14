@@ -11,6 +11,39 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ─── Platform knowledge base ──────────────────────────────────────────────────
+// GPT picks from these based on the candidate's profile
+const PLATFORM_CONTEXT = `
+AVAILABLE JOB PLATFORMS (choose the most relevant ones for this candidate):
+
+ATS Platforms (individual job pages, best for quality):
+- greenhouse.io — used by funded AI startups, ML companies, most top tech firms
+- lever.co — popular with Scale AI, Cohere, AI infrastructure companies  
+- ashbyhq.com — fast growing AI startups, early stage companies
+- workable.com — mid-size global tech companies
+- breezy.hr — mid-size companies globally
+- recruitee.com — European tech startups
+
+Remote Job Boards (good for remote-first roles):
+- himalayas.app — remote only, very clean job pages, Nigeria-friendly
+- remotive.com — remote focused, good individual job pages
+- jobgether.com — global remote, good for international candidates
+- weworkremotely.com — remote engineering roles
+
+Startup Focused:
+- workatastartup.com/companies — YC companies, early stage AI startups
+- wellfound.com/role — individual job pages only (not search pages)
+
+AI/ML Specific:
+- huggingface.co/jobs — AI research and engineering roles
+- mlops.community/jobs — MLOps and AI engineering
+
+IMPORTANT: Only pick platforms that make sense for the candidate's role and experience level.
+For junior/mid candidates: prefer himalayas, remotive, ashbyhq, workatastartup
+For senior candidates: prefer greenhouse, lever, wellfound individual roles
+For AI/ML specific: always include huggingface or mlops.community in at least one query
+`;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -28,7 +61,6 @@ Deno.serve(async (req) => {
       .from("profiles")
       .select("*")
       .or(`user_id.eq.${user_id},id.eq.${user_id}`)
-      
       .single();
 
     if (profileError || !profile) {
@@ -38,11 +70,29 @@ Deno.serve(async (req) => {
       });
     }
 
-    const skills = profile.skills?.join(", ") || "";
-    const titles = profile.preferred_titles?.join(", ") || "";
-    const location = profile.location || "";
-    const experience = profile.experience_summary || "";
+    const skills = profile.skills?.join(", ") || "Not specified";
+    const titles = profile.preferred_titles?.join(", ") || "Software Engineer";
     const workPref = profile.work_preference || "remote";
+    const yearsExp = profile.years_experience || 0;
+    const location = profile.location || "";
+    const summary = profile.experience_summary || "";
+
+    // Determine seniority label for prompt context
+    let seniorityLabel = "junior to mid-level";
+    if (yearsExp >= 6) seniorityLabel = "senior to principal level";
+    else if (yearsExp >= 3) seniorityLabel = "mid to senior level";
+
+    // Determine work preference context
+    const workPrefList = workPref.split(",").map((p: string) => p.trim());
+    const isRemoteOnly = workPrefList.includes("remote") && workPrefList.length === 1;
+    const acceptsHybrid = workPrefList.includes("hybrid");
+    const acceptsOnsite = workPrefList.includes("on-site");
+
+    const workContext = isRemoteOnly
+      ? "remote only — never include on-site or city-specific roles"
+      : acceptsHybrid && location
+      ? `prefers remote but open to hybrid in ${location}`
+      : `open to remote, hybrid, and on-site in ${location}`;
 
     const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
@@ -52,39 +102,55 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "gpt-4o",
-        max_tokens: 500,
-        temperature: 0.8,
+        max_tokens: 800,
+        temperature: 0.7,
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: "You are a job search expert. Return only valid JSON, no markdown.",
+            content: `You are a job search strategist. Your job is to generate highly targeted search queries that will find INDIVIDUAL job posting pages — not listing pages or search result pages. Return only valid JSON, no markdown.`,
           },
           {
             role: "user",
-            content: `Generate 8 highly targeted job search queries for this candidate.
+            content: `Generate 10 search queries for this candidate that will find individual job postings.
 
-CANDIDATE:
-Name: ${profile.full_name}
+CANDIDATE PROFILE:
 Target Roles: ${titles}
-Skills: ${skills}
-Experience: ${experience}
-Location: ${location}
-Work Preference: ${workPref}
+Key Skills: ${skills}
+Years of Experience: ${yearsExp} (${seniorityLabel})
+Work Preference: ${workContext}
+Career Summary: ${summary}
 
-RULES:
-- Write natural Google search queries like a recruiter would search
-- Include job board names naturally in the query: "wellfound", "remotive", "workatastartup", "greenhouse", "lever"
-- Include hiring signals in queries: "hiring", "job opening", "we are looking for", "join our team"
-- Include "remote" in most queries
-- Do NOT use site: operator
-- Mix different angles: some by skill, some by role title, some by company type (startup, AI company, SaaS)
-- Vary the queries so they find different jobs across different boards
-- Example good query: "remote AI Engineer LangChain RAG startup hiring 2026 wellfound"
-- Example good query: "agentic AI systems architect remote job opening greenhouse"
+${PLATFORM_CONTEXT}
 
-Return ONLY this JSON structure:
-{"queries": ["query 1", "query 2", "query 3", "query 4", "query 5", "query 6", "query 7", "query 8"]}`,
+QUERY STRATEGY:
+1. Each query must target a SPECIFIC platform from the list above
+2. Each query must reflect the candidate's ACTUAL skills and roles — not generic terms
+3. Vary the platforms across queries — do not repeat the same platform more than twice
+4. For remote-only candidates, every query must include "remote" 
+5. For hybrid/onsite candidates, mix remote queries with location-specific ones using "${location}"
+6. Match platform choice to seniority:
+   - ${seniorityLabel} candidate rules:
+   ${yearsExp < 3 
+     ? "- Prefer: himalayas.app, remotive.com, ashbyhq.com, workatastartup.com — avoid senior-heavy boards like lever.co for big companies"
+     : yearsExp < 5
+     ? "- Prefer: ashbyhq.com, greenhouse.io, workatastartup.com, himalayas.app — mix startup and mid-size companies"
+     : "- Prefer: greenhouse.io, lever.co, ashbyhq.com, wellfound.com individual roles — target funded and growth stage companies"
+   }
+7. Include hiring signals: "hiring", "job opening", "apply", "join our team", "we are looking for"
+8. Queries should be natural language — how a recruiter would write a job post title
+9. Target individual job pages: use platform subdirectories like "lever.co/jobs", "greenhouse.io/jobs", "workatastartup.com/companies"
+10. NEVER use site: operator — write natural queries
+
+Generate exactly 10 queries. Make each one unique in angle:
+- 2 queries by specific skill stack
+- 2 queries by role title variation  
+- 2 queries by company type (startup, AI company, SaaS, etc)
+- 2 queries by platform (ATS platforms)
+- 2 queries by niche (AI-specific boards or remote boards)
+
+Return ONLY this JSON:
+{"queries": ["query1", "query2", "query3", "query4", "query5", "query6", "query7", "query8", "query9", "query10"]}`,
           },
         ],
       }),
@@ -133,6 +199,9 @@ Return ONLY this JSON structure:
       });
     }
 
+    console.log(`[generate-seeds] Generated ${queries.length} seeds for user ${user_id}`);
+    console.log("[generate-seeds] Seeds:", queries);
+
     return new Response(
       JSON.stringify({ success: true, seeds: queries }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -145,4 +214,4 @@ Return ONLY this JSON structure:
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});const { data: profile, error: profileError } = await supabase
+});
