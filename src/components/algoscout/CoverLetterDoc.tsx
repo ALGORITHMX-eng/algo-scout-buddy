@@ -3,45 +3,19 @@ import { Copy, Check } from "lucide-react";
 
 export const CoverLetterDoc = ({
   body,
-  applicantName,
   company,
-  role,
-  date,
 }: {
   body: string;
-  applicantName?: string;
   company: string;
-  role: string;
-  date: string;
+  // kept for backwards compat but no longer used to wrap
+  applicantName?: string;
+  role?: string;
+  date?: string;
 }) => {
   const [copied, setCopied] = useState(false);
 
-  const name = applicantName || "";
-
-  const formattedDate = (() => {
-    try {
-      return new Date(date).toLocaleDateString(undefined, {
-        year: "numeric", month: "long", day: "numeric",
-      });
-    } catch { return date; }
-  })();
-
-  const fullText = [
-    name,
-    "",
-    formattedDate,
-    "",
-    "Hiring Team",
-    company,
-    "",
-    body,
-    "",
-    "Best regards,",
-    name,
-  ].join("\n");
-
   const handleCopy = () => {
-    navigator.clipboard.writeText(fullText).then(() => {
+    navigator.clipboard.writeText(body).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -66,8 +40,8 @@ export const CoverLetterDoc = ({
       </div>
       <textarea
         readOnly
-        value={fullText}
-        rows={Math.max(14, fullText.split("\n").length + 2)}
+        value={body}
+        rows={Math.max(14, body.split("\n").length + 2)}
         onClick={(e) => (e.target as HTMLTextAreaElement).select()}
         className="w-full resize-none bg-background px-5 py-4 text-sm text-foreground leading-relaxed font-mono focus:outline-none"
       />

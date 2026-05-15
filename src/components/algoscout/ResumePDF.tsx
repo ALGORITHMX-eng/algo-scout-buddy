@@ -1,375 +1,228 @@
-import {
-  Document,
-  Page,
-  Text,
-  View,
-  StyleSheet,
-  Link,
-  Svg,
-  Path,
-  pdf,
-} from "@react-pdf/renderer";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const c = {
-  black: "#111111",
-  mid: "#444444",
-  light: "#777777",
-  rule: "#cccccc",
-  blue: "#1a56db",
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const s = StyleSheet.create({
-  page: {
-    fontFamily: "Helvetica",
-    fontSize: 9.5,
-    color: c.black,
-    paddingTop: 36,
-    paddingBottom: 36,
-    paddingHorizontal: 48,
-  },
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // ── Header ───────────────────────────────────────────────
-  header: { alignItems: "center", marginBottom: 12 },
-  name: { fontSize: 22, fontFamily: "Helvetica-Bold", letterSpacing: 1.5, marginBottom: 3 },
-  targetTitle: {
-    fontSize: 8.5,
-    color: c.light,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    marginBottom: 6,
-  },
-  contactRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 4 },
-  contactItem: { flexDirection: "row", alignItems: "center", gap: 2 },
-  contactText: { fontSize: 8.5, color: c.mid },
-  contactSep: { fontSize: 8.5, color: c.rule, marginHorizontal: 2 },
-  contactLink: { fontSize: 8.5, color: c.blue, textDecoration: "none" },
+  try {
+    const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN")!;
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // ── Section ──────────────────────────────────────────────
-  section: { marginBottom: 9 },
-  sectionHead: {
-    fontSize: 7.5,
-    fontFamily: "Helvetica-Bold",
-    textTransform: "uppercase",
-    letterSpacing: 2,
-    borderBottomWidth: 0.3,
-    borderBottomColor: c.rule,
-    paddingBottom: 2,
-    marginBottom: 5,
-  },
+    const { user_id, job_id, instruction, current_resume, current_cover_letter } = await req.json();
 
-  // ── Skills matrix ─────────────────────────────────────────
-  skillRow: { flexDirection: "row", marginBottom: 2 },
-  skillLabel: { fontFamily: "Helvetica-Bold", fontSize: 8.5, width: 100, color: c.black },
-  skillValue: { fontSize: 8.5, color: c.mid, flex: 1, lineHeight: 1.4 },
-
-  // ── Experience ───────────────────────────────────────────
-  entryBlock: { marginBottom: 6 },
-  entryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 1 },
-  entryTitle: { fontFamily: "Helvetica-Bold", fontSize: 9 },
-  entryDate: { fontSize: 8, color: c.light },
-  entryCompany: { fontSize: 8.5, fontFamily: "Helvetica-Oblique", color: c.mid, marginBottom: 2 },
-
-  // ── Bullets ──────────────────────────────────────────────
-  bullet: { flexDirection: "row", marginBottom: 2, paddingLeft: 4 },
-  bulletDot: { fontSize: 8.5, marginRight: 4, color: c.mid, marginTop: 1 },
-  bulletText: { fontSize: 8.5, flex: 1, color: c.black, lineHeight: 1.4 },
-
-  // ── Projects ─────────────────────────────────────────────
-  projectBlock: { marginBottom: 5 },
-  projectHeaderRow: { flexDirection: "row", alignItems: "baseline", marginBottom: 1 },
-  projectName: { fontFamily: "Helvetica-Bold", fontSize: 9 },
-  projectSep: { fontSize: 8.5, color: c.light, marginHorizontal: 3 },
-  projectTech: { fontSize: 8, color: c.mid, fontFamily: "Helvetica-Oblique", flex: 1 },
-
-  // ── Summary ──────────────────────────────────────────────
-  summary: { fontSize: 9, lineHeight: 1.5, color: c.black },
-
-  // ── Education ────────────────────────────────────────────
-  eduAchievement: { fontSize: 8.5, color: c.mid, marginTop: 1, fontFamily: "Helvetica-Oblique" },
-});
-
-// ── SVG Icons ────────────────────────────────────────────────
-const IconPhone = () => (
-  <Svg width="8" height="8" viewBox="0 0 24 24">
-    <Path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C9.6 21 3 14.4 3 7c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z" fill={c.mid} />
-  </Svg>
-);
-
-const IconEmail = () => (
-  <Svg width="8" height="8" viewBox="0 0 24 24">
-    <Path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" fill={c.mid} />
-  </Svg>
-);
-
-const IconLocation = () => (
-  <Svg width="8" height="8" viewBox="0 0 24 24">
-    <Path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill={c.mid} />
-  </Svg>
-);
-
-const IconLinkedIn = () => (
-  <Svg width="8" height="8" viewBox="0 0 24 24">
-    <Path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z" fill={c.blue} />
-  </Svg>
-);
-
-const IconGitHub = () => (
-  <Svg width="8" height="8" viewBox="0 0 24 24">
-    <Path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z" fill={c.mid} />
-  </Svg>
-);
-
-const IconPortfolio = () => (
-  <Svg width="8" height="8" viewBox="0 0 24 24">
-    <Path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" fill={c.mid} />
-  </Svg>
-);
-
-// ── Types ─────────────────────────────────────────────────────
-type ResumeData = {
-  name: string;
-  email: string;
-  phone: string;
-  location: string;
-  linkedin?: string;
-  github?: string;
-  portfolio?: string;
-  targetTitle?: string;
-  summary: string;
-  experience: {
-    title: string;
-    company: string;
-    duration: string;
-    bullets: string[];
-  }[];
-  projects?: {
-    name: string;
-    description: string;
-    tech: string[];
-  }[];
-  skills: string[];
-  education: {
-    degree: string;
-    school: string;
-    year: string;
-    achievements?: string;
-  };
-};
-
-// ── Skill categorizer ─────────────────────────────────────────
-function categorizeSkills(skills: string[]) {
-  const map: [string, string[]][] = [
-    ["AI / LLM", ["LangGraph", "LangChain", "Groq", "LLaMA", "Agentic", "Prompt Engineering", "HuggingFace", "MiniLM", "Sentence Embedding", "RAG", "Scikit", "Hallucination", "Prompt Injection"]],
-    ["Languages", ["Python", "TypeScript", "JavaScript", "SQL", "PostgreSQL", "C++", "Java", "Go", "Rust"]],
-    ["Backend / Infra", ["Node.js", "Supabase", "pgvector", "REST", "FastAPI", "Django", "Express", "MongoDB", "Netlify", "Vercel"]],
-    ["Automation", ["n8n", "Make.com", "Slack API", "Gmail API", "Botpress", "NDPR"]],
-    ["Tools", ["Git", "GitHub", "Docker", "AWS"]],
-  ];
-
-  const result: { label: string; items: string[] }[] = [];
-  const used = new Set<string>();
-
-  for (const [label, keywords] of map) {
-    const matched = skills.filter(
-      sk => !used.has(sk) && keywords.some(k => sk.toLowerCase().includes(k.toLowerCase()))
-    );
-    if (matched.length) {
-      matched.forEach(sk => used.add(sk));
-      result.push({ label, items: matched });
+    if (!user_id) {
+      return new Response(JSON.stringify({ error: "user_id required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+
+    const resolvedInstruction = instruction || "Generate a tailored resume and cover letter for this job.";
+
+    const { data: job } = await supabase
+      .from("jobs")
+      .select("company, role, raw_text")
+      .eq("id", job_id)
+      .single();
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", user_id)
+      .single();
+
+    if (!profile) {
+      return new Response(JSON.stringify({ error: "Profile not found. Please complete your profile first." }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+    const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${GITHUB_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        max_tokens: 4000,
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `You are a world-class Resume Strategist and ex-Senior Recruiter who has placed candidates at Y Combinator startups, FAANG, and top multinationals. You have reviewed 50,000+ resumes and know exactly what wins interviews.
+
+You craft exceptionally sharp, persuasive, and ATS-optimized resumes and cover letters. You adapt to any background — fresh graduates to senior professionals, across Engineering, Tech, Business, and more.
+
+═══ ABSOLUTE RULES (never break) ═══
+- Use ONLY information from the candidate profile and raw_resume_text. NEVER invent any experience, achievements, companies, dates, projects, or skills not explicitly listed.
+- Be confident and impactful, but 100% truthful. No exaggeration.
+- Prioritize relevance to the job description above everything else.
+- If a field is missing from the profile, leave it empty — never fill it in.
+
+═══ BEFORE YOU WRITE ANYTHING ═══
+Deeply analyze the job description and identify:
+- The core problem this company needs solved
+- Exact tech stack and tools they want
+- Keywords and phrases they repeat
+- The type of impact they care about (speed, scale, cost, uptime, accuracy)
+- Seniority level and tone expected
+Then position the candidate as the best possible fit using only their real experience.
+
+═══ RESUME STANDARDS ═══
+
+TARGET TITLE: Choose the strongest, most strategic title that bridges the candidate's background with the job. Do not copy the job title verbatim — pick what positions the candidate best.
+
+PROFESSIONAL SUMMARY (3-5 lines max):
+- Start with a powerful positioning statement — never generic openers like "Experienced engineer with X years"
+- Connect the candidate's background directly to this company's domain and problem
+- Highlight relevant experience and proven impact
+- End with what the candidate specifically brings to this role
+
+BULLET POINTS (every bullet must follow this formula):
+[Strong Action Verb] + [What You Did] + [Result/Impact] + [(Tool/Tech)]
+- Quantify aggressively: %, time saved, uptime, speed, cost reduced, scale, users, hours eliminated
+- Use the job's own keywords naturally
+- Remove all weak words: "assisted", "helped", "worked on", "participated in", "involved in"
+- Strong verbs only: Engineered, Architected, Deployed, Automated, Reduced, Eliminated, Scaled, Optimized, Designed, Built, Launched, Delivered
+
+SKILLS: Only the most relevant skills for this specific job, ranked by importance to the role.
+
+PROJECTS & EXPERIENCE: Outcome-focused and relevant to this job. Pick the most impressive and relevant ones.
+
+EDUCATION: Keep exactly as in the profile. Include scholarship or achievement if present.
+
+═══ COVER LETTER FORMAT (follow exactly) ═══
+[Full Name]
+[Today's Date]
+Hiring Team
+[Company Name]
+
+Dear Hiring Team at [Company Name],
+
+[Paragraph 1 — Hook: Strong opening on why this specific role at this specific company excites the candidate. Reference something real from the job description. One sentence on who the candidate is.]
+
+[Paragraph 2 — Proof: 2-3 specific real achievements from the profile that directly match what this job needs. Include numbers and outcomes. No invented experience.]
+
+[Paragraph 3 — Fit: Why this company specifically. Reference their mission, product, or domain from the job description. Show you read it.]
+
+[Paragraph 4 — Close: Confident call to action. Express readiness to contribute immediately.]
+
+Best regards,
+[Full Name]
+[Country only]
+[Email] | [Phone]
+LinkedIn: [linkedin] | GitHub: [github]
+
+═══ OUTPUT ═══
+Return ONLY valid JSON, no markdown, no explanation:
+{
+  "resume": {
+    "name": "",
+    "email": "",
+    "phone": "",
+    "location": "",
+    "linkedin": "",
+    "github": "",
+    "portfolio": "",
+    "targetTitle": "",
+    "summary": "",
+    "experience": [{ "title": "", "company": "", "duration": "", "bullets": [] }],
+    "skills": [],
+    "projects": [{ "name": "", "description": "", "tech": [] }],
+    "education": { "degree": "", "school": "", "year": "", "achievements": "" }
+  },
+  "cover_letter": "full cover letter text with \\n for line breaks",
+  "message": "one sentence on what you tailored"
+}
+
+Page cap: 3+ jobs = max 3 bullets each, 2 jobs = max 4 each, 1 job = max 6.
+If instruction is only about resume, return cover_letter unchanged.
+If instruction is only about cover letter, return resume unchanged.`,
+          },
+          {
+            role: "user",
+            content: `TODAY'S DATE: ${today}
+
+JOB:
+Company: ${job?.company}
+Role: ${job?.role}
+Description:
+${(job?.raw_text || "").slice(0, 4000)}
+
+CANDIDATE PROFILE (use ONLY this — never invent beyond it):
+Name: ${profile.full_name}
+Email: ${profile.email}
+Phone: ${profile.phone || ""}
+Location: ${profile.location || ""}
+LinkedIn: ${profile.linkedin || ""}
+GitHub: ${profile.github || ""}
+Portfolio: ${profile.portfolio || ""}
+Preferred Titles: ${profile.preferred_titles?.join(", ") || ""}
+Years of Experience: ${profile.years_experience || 0}
+Skills: ${profile.skills?.join(", ") || ""}
+Experience Summary: ${profile.experience_summary || ""}
+Full Resume Text (source of truth for all experience, projects, education):
+${profile.raw_resume_text || ""}
+
+CURRENT RESUME: ${current_resume ? JSON.stringify(current_resume, null, 2) : "None — generate fresh from profile"}
+CURRENT COVER LETTER: ${current_cover_letter || "None — generate fresh"}
+
+INSTRUCTION: ${resolvedInstruction}`,
+          },
+        ],
+      }),
+    });
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || "{}";
+
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/);
+      result = match ? JSON.parse(match[0]) : null;
+    }
+
+    if (!result) {
+      return new Response(JSON.stringify({ error: "Failed to parse AI response" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (job_id) {
+      await supabase.from("jobs").update({
+        resume_notes: JSON.stringify(result.resume),
+        cover_letter_notes: result.cover_letter,
+      }).eq("id", job_id);
+    }
+
+    return new Response(
+      JSON.stringify({
+        resume: result.resume,
+        cover_letter: result.cover_letter,
+        message: result.message || "Done — your tailored docs are ready.",
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (e) {
+    console.error("generate-docs error:", e);
+    return new Response(
+      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
-
-  const rest = skills.filter(sk => !used.has(sk));
-  if (rest.length) result.push({ label: "Other", items: rest });
-
-  return result;
-}
-
-function isValidUrl(val?: string) {
-  if (!val) return false;
-  if (val.toLowerCase() === "portfolio") return false;
-  return val.startsWith("http") || val.includes(".");
-}
-
-// ── Main PDF ──────────────────────────────────────────────────
-const ResumePDFDoc = ({ data }: { data: ResumeData }) => {
-  const skillGroups = categorizeSkills(data.skills || []);
-  const country = data.location?.split(",").pop()?.trim() || data.location;
-  const hasPortfolio = isValidUrl(data.portfolio);
-
-  return (
-    <Document>
-      <Page size="A4" style={s.page}>
-
-        {/* ── HEADER ── */}
-        <View style={s.header}>
-          <Text style={s.name}>{data.name}</Text>
-          {data.targetTitle && <Text style={s.targetTitle}>{data.targetTitle}</Text>}
-          <View style={s.contactRow}>
-            {data.phone && (
-              <View style={s.contactItem}>
-                <IconPhone />
-                <Text style={s.contactText}> {data.phone}</Text>
-              </View>
-            )}
-            {data.phone && data.email && <Text style={s.contactSep}>|</Text>}
-            {data.email && (
-              <View style={s.contactItem}>
-                <IconEmail />
-                <Text style={s.contactText}> {data.email}</Text>
-              </View>
-            )}
-            {country && <Text style={s.contactSep}>|</Text>}
-            {country && (
-              <View style={s.contactItem}>
-                <IconLocation />
-                <Text style={s.contactText}> {country}</Text>
-              </View>
-            )}
-            {data.linkedin && (
-              <>
-                <Text style={s.contactSep}>|</Text>
-                <View style={s.contactItem}>
-                  <IconLinkedIn />
-                  <Link
-                    src={data.linkedin.startsWith("http") ? data.linkedin : `https://${data.linkedin}`}
-                    style={s.contactLink}
-                  >
-                    {" "}LinkedIn
-                  </Link>
-                </View>
-              </>
-            )}
-            {data.github && (
-              <>
-                <Text style={s.contactSep}>|</Text>
-                <View style={s.contactItem}>
-                  <IconGitHub />
-                  <Link
-                    src={data.github.startsWith("http") ? data.github : `https://${data.github}`}
-                    style={s.contactLink}
-                  >
-                    {" "}GitHub
-                  </Link>
-                </View>
-              </>
-            )}
-            {hasPortfolio && (
-              <>
-                <Text style={s.contactSep}>|</Text>
-                <View style={s.contactItem}>
-                  <IconPortfolio />
-                  <Link
-                    src={data.portfolio!.startsWith("http") ? data.portfolio! : `https://${data.portfolio}`}
-                    style={s.contactLink}
-                  >
-                    {" "}Portfolio
-                  </Link>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-
-        {/* ── SUMMARY ── */}
-        {data.summary && (
-          <View style={s.section}>
-            <Text style={s.sectionHead}>Summary</Text>
-            <Text style={s.summary}>{data.summary}</Text>
-          </View>
-        )}
-
-        {/* ── SKILLS ── */}
-        {skillGroups.length > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionHead}>Technical Skills</Text>
-            {skillGroups.map(({ label, items }) => (
-              <View key={label} style={s.skillRow}>
-                <Text style={s.skillLabel}>{label}:</Text>
-                <Text style={s.skillValue}>{items.join(", ")}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* ── EXPERIENCE ── */}
-        {data.experience?.length > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionHead}>Experience</Text>
-            {data.experience.map((job, i) => (
-              <View key={i} style={s.entryBlock}>
-                <View style={s.entryRow}>
-                  <Text style={s.entryTitle}>{job.title}</Text>
-                  <Text style={s.entryDate}>{job.duration}</Text>
-                </View>
-                <Text style={s.entryCompany}>{job.company}</Text>
-                {job.bullets?.map((bullet, j) => (
-                  <View key={j} style={s.bullet}>
-                    <Text style={s.bulletDot}>•</Text>
-                    <Text style={s.bulletText}>{bullet}</Text>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* ── PROJECTS ── */}
-        {data.projects && data.projects.length > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionHead}>Projects</Text>
-            {data.projects.map((project, i) => (
-              <View key={i} style={s.projectBlock}>
-                <View style={s.projectHeaderRow}>
-                  <Text style={s.projectName}>{project.name}</Text>
-                  {project.tech?.length > 0 && (
-                    <>
-                      <Text style={s.projectSep}>—</Text>
-                      <Text style={s.projectTech}>{project.tech.join(" · ")}</Text>
-                    </>
-                  )}
-                </View>
-                {project.description && (
-                  <View style={s.bullet}>
-                    <Text style={s.bulletDot}>•</Text>
-                    <Text style={s.bulletText}>{project.description}</Text>
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* ── EDUCATION ── */}
-        {data.education && (
-          <View style={s.section}>
-            <Text style={s.sectionHead}>Education</Text>
-            <View style={s.entryBlock}>
-              <View style={s.entryRow}>
-                <Text style={s.entryTitle}>{data.education.school}</Text>
-                <Text style={s.entryDate}>{data.education.year}</Text>
-              </View>
-              <Text style={s.entryCompany}>{data.education.degree}</Text>
-              {data.education.achievements && (
-                <Text style={s.eduAchievement}>{data.education.achievements}</Text>
-              )}
-            </View>
-          </View>
-        )}
-
-      </Page>
-    </Document>
-  );
-};
-
-export const downloadResumePDF = async (data: ResumeData, filename?: string) => {
-  const blob = await pdf(<ResumePDFDoc data={data} />).toBlob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename || `${data.name?.replace(/\s+/g, "_")}_Resume.pdf`;
-  link.click();
-  URL.revokeObjectURL(url);
-};
-
-export default ResumePDFDoc;
+});
