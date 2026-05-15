@@ -61,7 +61,6 @@ function shouldSkipEarly(title: string, content: string, profile: any): { skip: 
 }
 
 // ─── TypeScript weighted score calculator ─────────────────────────────────────
-// GPT returns 4 aspect scores, TypeScript does the math — no GPT arithmetic errors
 function calculateCumulativeScore(breakdown: {
   skill_match: number;
   experience_level: number;
@@ -73,12 +72,10 @@ function calculateCumulativeScore(breakdown: {
     (breakdown.experience_level * 0.25) +
     (breakdown.domain_fit * 0.20) +
     (breakdown.work_flexibility * 0.15);
-
-  // Round to 1 decimal place
   return Math.round(cumulative * 10) / 10;
 }
 
-// ─── Exa Search ───────────────────────────────────────────────────────────────
+// ─── Exa Search — 20 results per query ───────────────────────────────────────
 async function exaSearch(query: string): Promise<Array<{ url: string; title: string; content: string }>> {
   try {
     const res = await fetch("https://api.exa.ai/search", {
@@ -87,7 +84,7 @@ async function exaSearch(query: string): Promise<Array<{ url: string; title: str
       body: JSON.stringify({
         query,
         type: "auto",
-        numResults: 10,
+        numResults: 20,
         contents: { text: { maxCharacters: 3000 } },
       }),
     });
@@ -112,9 +109,71 @@ async function scrapeDoExtract(url: string): Promise<string> {
   } catch { return ""; }
 }
 
+// ─── Generate Seeds — 20 seeds ───────────────────────────────────────────────
+async function generateSeeds(userId: string, profile: any): Promise<string[]> {
+  const { data: existing } = await supabase
+    .from("search_seeds")
+    .select("query")
+    .eq("user_id", userId);
+
+  if (existing && existing.length > 0) {
+    console.log(`[seeds] using ${existing.length} existing seeds`);
+    return existing.map((s: any) => s.query);
+  }
+
+  const skills = profile.skills?.join(", ") || "";
+  const titles = profile.preferred_titles?.join(", ") || "";
+
+  try {
+    const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        max_tokens: 1000,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: "Return only valid JSON, no markdown." },
+          {
+            role: "user",
+            content: `Generate 20 diverse job search queries for this candidate.
+
+Skills: ${skills}
+Target Roles: ${titles}
+Work Preference: ${profile.work_preference || "remote"}
+
+Rules:
+- Mix different job titles, seniority levels, and company types
+- Include some niche/specific queries and some broad ones
+- Each query should target real job boards and hiring pages
+- Include "job", "hiring", "careers", or "apply" in each query
+- Vary the queries — don't repeat the same title
+
+Return: {"queries": ["query1", "query2", ...]} with exactly 20 queries`,
+          },
+        ],
+      }),
+    });
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(text);
+    const queries: string[] = parsed.queries || [];
+
+    if (queries.length > 0) {
+      await supabase.from("search_seeds").delete().eq("user_id", userId);
+      await supabase.from("search_seeds").insert(
+        queries.map((q) => ({ user_id: userId, query: q }))
+      );
+    }
+
+    return queries;
+  } catch (err) {
+    console.error("[seeds] error:", err);
+    return [];
+  }
+}
+
 // ─── Analyze + Score ──────────────────────────────────────────────────────────
-// GPT scores each of the 4 aspects independently (1.0–10.0)
-// TypeScript calculates the weighted cumulative score
 async function analyzeJob(
   content: string,
   title: string,
@@ -155,7 +214,7 @@ async function analyzeJob(
         messages: [
           {
             role: "system",
-            content: `You are ALGOscout, a brutally honest AI job matching engine. Your job is to protect candidates from wasting time on roles they are NOT qualified for. Be strict and accurate — never inflate scores. Return only valid JSON, no markdown.`,
+            content: `You are ALGOscout, a brutally honest AI job matching engine. Protect candidates from wasting time on roles they are NOT qualified for. Be strict and accurate — never inflate scores. Return only valid JSON, no markdown.`,
           },
           {
             role: "user",
@@ -180,25 +239,24 @@ STEP 2 — EXTRACT:
 Pull out company name, exact job title, location, required years of experience, and a clean 2-3 paragraph job description.
 
 STEP 3 — SCORE EACH ASPECT INDEPENDENTLY (1.0 to 10.0, one decimal, be strict):
-
-NOTE: Do NOT calculate the cumulative score — that will be done separately. Just score each aspect honestly.
+Do NOT calculate the cumulative score — that will be done in TypeScript.
 
 A. SKILL MATCH:
 - List ALL skills/technologies the job requires
 - Compare against candidate skills: ${skills}
-- List which ones match (matched_skills) and which are missing (missing_skills)
+- matched_skills = skills candidate HAS that job requires
+- missing_skills = skills job requires that candidate LACKS
 - Score based on % of required skills candidate actually has:
-  9.0-10.0 = 85%+ of required skills matched
+  9.0-10.0 = 85%+ matched
   7.0-8.9  = 65-84% matched
   5.0-6.9  = 40-64% matched
   3.0-4.9  = 20-39% matched
   1.0-2.9  = less than 20% matched
 
 B. EXPERIENCE LEVEL:
-- Extract required years from job posting (set required_years to null if not mentioned)
+- Extract required years (set required_years null if not mentioned)
 - Candidate has ${yearsExp} years
-- Score:
-  9.0-10.0 = within 1 year of requirement OR no requirement mentioned
+  9.0-10.0 = within 1 year OR no requirement mentioned
   7.0-8.9  = 1-2 years difference
   5.0-6.9  = 2-3 years difference
   3.0-4.9  = 3-4 years difference
@@ -206,25 +264,24 @@ B. EXPERIENCE LEVEL:
 
 C. DOMAIN FIT:
 - Candidate targets: ${titles}
-- Does the company domain, product, and role type match candidate background?
   9.0-10.0 = perfect domain and role alignment
-  7.0-8.9  = related domain, close role type
+  7.0-8.9  = related domain, close role
   5.0-6.9  = adjacent domain, some overlap
-  3.0-4.9  = different domain but transferable skills
-  1.0-2.9  = completely different domain or seniority
+  3.0-4.9  = different domain, transferable skills
+  1.0-2.9  = completely different domain
 
 D. WORK FLEXIBILITY:
 - Candidate prefers: ${workPref}
-  10.0 = exact match (remote=remote)
+  10.0 = exact match
   7.0  = hybrid when candidate wants remote
-  4.0  = flexible/negotiable
-  1.0  = complete mismatch (onsite only, remote wanted)
-  6.0  = not mentioned in job posting
+  6.0  = not mentioned
+  4.0  = flexible but not ideal
+  1.0  = complete mismatch
 
 STEP 4 — REASON:
-Write 2-3 brutally honest sentences like a senior recruiter. Mention specific matched skills AND specific gaps. Never write generic phrases.
+2-3 brutally honest sentences. Mention specific matched AND missing skills. Never generic.
 
-Return ONLY this JSON (do NOT include a cumulative score field — leave score as 0):
+Return ONLY this JSON (leave score as 0 — TypeScript calculates it):
 {
   "is_real_job": true,
   "company": "Company Name",
@@ -232,7 +289,7 @@ Return ONLY this JSON (do NOT include a cumulative score field — leave score a
   "location": "Remote or City",
   "description": "Clean 2-3 paragraph job description",
   "score": 0,
-  "reason": "2-3 brutally honest sentences about match quality and specific gaps.",
+  "reason": "2-3 brutally honest sentences.",
   "breakdown": {
     "skill_match": 7.5,
     "experience_level": 6.0,
@@ -260,7 +317,7 @@ Return ONLY this JSON (do NOT include a cumulative score field — leave score a
 
     if (!parsed) return null;
 
-    // ── TypeScript calculates the real score — not GPT ──
+    // TypeScript calculates the real score
     if (parsed.breakdown) {
       parsed.score = calculateCumulativeScore(parsed.breakdown);
     }
@@ -299,17 +356,15 @@ async function scoutForUser(userId: string) {
     return { jobs_found: 0, jobs_inserted: 0, jobs_skipped: 0 };
   }
 
-  const { data: seeds } = await supabase
-    .from("search_seeds").select("query").eq("user_id", userId);
-  if (!seeds || seeds.length === 0) {
+  const seeds = await generateSeeds(userId, profile);
+  if (seeds.length === 0) {
     console.log(`No seeds: ${userId}`);
     return { jobs_found: 0, jobs_inserted: 0, jobs_skipped: 0 };
   }
 
   console.log(`[scout] ${seeds.length} seeds for user ${userId}`);
-  console.log(`[scout] work_preference=${profile.work_preference} years_experience=${profile.years_experience}`);
 
-  const allResultsNested = await Promise.all(seeds.map((s: any) => exaSearch(s.query)));
+  const allResultsNested = await Promise.all(seeds.map((q) => exaSearch(q)));
   const allResults = allResultsNested.flat();
   console.log(`[scout] ${allResults.length} raw results from Exa`);
 
@@ -336,7 +391,6 @@ async function scoutForUser(userId: string) {
       const rawUrl = result.url;
       const normalizedUrl = normalizeUrl(rawUrl);
 
-      // Skip duplicate in DB
       const { data: existing } = await supabase
         .from("jobs").select("id")
         .eq("user_id", userId)
@@ -344,7 +398,6 @@ async function scoutForUser(userId: string) {
         .maybeSingle();
       if (existing) { totalSkipped++; return; }
 
-      // Get content
       let content = result.content;
       if (!content || content.length < 200) {
         console.log(`[scout] Exa content short → Scrape.do: ${rawUrl.slice(0, 50)}`);
@@ -356,7 +409,6 @@ async function scoutForUser(userId: string) {
         return;
       }
 
-      // Pre-filter before calling GPT
       const { skip, reason } = shouldSkipEarly(result.title, content, profile);
       if (skip) {
         console.log(`[scout] PRE-FILTER SKIP ${reason}`);
@@ -364,7 +416,6 @@ async function scoutForUser(userId: string) {
         return;
       }
 
-      // Analyze + score
       const analysis = await analyzeJob(content, result.title, rawUrl, profile);
       if (!analysis) { totalSkipped++; return; }
 
@@ -374,13 +425,13 @@ async function scoutForUser(userId: string) {
         return;
       }
 
-      if (analysis.score < 7) {
+      // Threshold lowered to 6.0 for more volume
+      if (analysis.score < 6) {
         console.log(`[scout] SKIP score=${analysis.score}: ${analysis.company}`);
         totalSkipped++;
         return;
       }
 
-      // Skip rejected company
       const { data: rejected } = await supabase
         .from("jobs").select("id")
         .eq("user_id", userId)
@@ -389,7 +440,6 @@ async function scoutForUser(userId: string) {
         .maybeSingle();
       if (rejected) { totalSkipped++; return; }
 
-      // Insert with breakdown
       const { data: newJob, error: insertError } = await supabase
         .from("jobs")
         .insert({
@@ -401,7 +451,7 @@ async function scoutForUser(userId: string) {
           location: analysis.location,
           raw_text: content,
           description: analysis.description || "",
-          score: analysis.score, // decimal like 7.3, calculated by TypeScript
+          score: analysis.score,
           score_reason: analysis.reason,
           score_breakdown: analysis.breakdown ? JSON.stringify(analysis.breakdown) : null,
           status: "pending",
