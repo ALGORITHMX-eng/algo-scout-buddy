@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   ExternalLink, Check, X, Inbox, Clock, CheckCircle2,
-  XCircle, BellRing, BellOff, Loader2, MapPin,
+  XCircle, BellRing, Loader2, MapPin,
 } from "lucide-react";
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ScorePill } from "@/components/algoscout/ScorePill";
@@ -155,9 +155,7 @@ function JobPanel({
               disabled={approving}
               className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 py-3 text-sm font-medium text-emerald-600 transition hover:bg-emerald-500/20 disabled:opacity-60 dark:text-emerald-400"
             >
-              {approving
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <Check className="h-4 w-4" />}
+              {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Approve & Generate
             </button>
           </div>
@@ -209,19 +207,31 @@ function SwipeCard({ job, onApprove, onReject, isTop, stackIndex }: {
   const swipeLeft = dragX < -40;
 
   return (
-    <div ref={cardRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+    <div
+      ref={cardRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
       className={`absolute inset-0 rounded-2xl border border-border bg-card select-none ${isTop ? "cursor-grab active:cursor-grabbing z-10" : "pointer-events-none"}`}
       style={{
-        transform: isTop ? `translateX(${translateX}) rotate(${rotate})` : `translateY(${translateYBack}px) scale(${scaleBack})`,
+        transform: isTop
+          ? `translateX(${translateX}) rotate(${rotate})`
+          : `translateY(${translateYBack}px) scale(${scaleBack})`,
         transition: leaving || !isDragging.current ? "transform 0.3s ease" : "none",
-        zIndex: 10 - stackIndex, touchAction: "none",
-      }}>
-      <div className="absolute inset-0 rounded-2xl bg-emerald-500/20 border-2 border-emerald-500 flex items-start justify-start p-5 z-20 pointer-events-none transition-opacity duration-100"
-        style={{ opacity: swipeRight ? Math.min((dragX - 40) / 60, 1) : 0 }}>
+        zIndex: 10 - stackIndex,
+        touchAction: "none",
+      }}
+    >
+      <div
+        className="absolute inset-0 rounded-2xl bg-emerald-500/20 border-2 border-emerald-500 flex items-start justify-start p-5 z-20 pointer-events-none transition-opacity duration-100"
+        style={{ opacity: swipeRight ? Math.min((dragX - 40) / 60, 1) : 0 }}
+      >
         <span className="rounded-lg border-2 border-emerald-500 px-3 py-1 text-sm font-bold text-emerald-500 rotate-[-12deg]">APPLY ✓</span>
       </div>
-      <div className="absolute inset-0 rounded-2xl bg-rose-500/20 border-2 border-rose-500 flex items-start justify-end p-5 z-20 pointer-events-none transition-opacity duration-100"
-        style={{ opacity: swipeLeft ? Math.min((-dragX - 40) / 60, 1) : 0 }}>
+      <div
+        className="absolute inset-0 rounded-2xl bg-rose-500/20 border-2 border-rose-500 flex items-start justify-end p-5 z-20 pointer-events-none transition-opacity duration-100"
+        style={{ opacity: swipeLeft ? Math.min((-dragX - 40) / 60, 1) : 0 }}
+      >
         <span className="rounded-lg border-2 border-rose-500 px-3 py-1 text-sm font-bold text-rose-500 rotate-[12deg]">SKIP ✕</span>
       </div>
       <div className="flex h-full flex-col p-5">
@@ -279,8 +289,10 @@ function SwipeReview({ pending, onApprove, onReject }: {
       <div className="relative w-full max-w-xs flex-shrink-0" style={{ height: 288 }}>
         {[...visible].reverse().map((job, i) => {
           const stackIndex = visible.length - 1 - i;
-          return <SwipeCard key={job.id} job={job} onApprove={onApprove} onReject={onReject}
-            isTop={stackIndex === 0} stackIndex={stackIndex} />;
+          return (
+            <SwipeCard key={job.id} job={job} onApprove={onApprove} onReject={onReject}
+              isTop={stackIndex === 0} stackIndex={stackIndex} />
+          );
         })}
       </div>
       <div className="flex w-full flex-col gap-4">
@@ -348,7 +360,6 @@ export default function AlgoDashboard() {
   useEffect(() => {
     const load = async () => { setLoading(true); await fetchJobs(); setLoading(false); };
     load();
-    // Check if push already granted
     if ("Notification" in window && Notification.permission === "granted") {
       setPushEnabled(true);
     }
@@ -375,8 +386,8 @@ export default function AlgoDashboard() {
     [jobs],
   );
 
-  // FIX: "All" tab shows only pending — approved/rejected leave the leads table
-  // but still count in Total Leads stat card
+  // "All" tab shows only pending — jobs leave table after approve/reject
+  // but Total Leads stat still counts everything
   const visible = useMemo(() => {
     if (filter === "All") return jobs.filter((j) => j.status === "pending");
     return jobs.filter((j) => j.status === filter);
@@ -471,21 +482,14 @@ export default function AlgoDashboard() {
             <p className="text-sm text-muted-foreground">AI-scored job leads, ready for your review.</p>
           </div>
 
-          {/* Notification bell — shows Enabled once activated */}
           <button
             onClick={handleEnablePush}
-            disabled={pushBusy || pushEnabled}
-            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-medium ring-1 transition
-              ${pushEnabled
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/30 cursor-default"
-                : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-60"
-              }`}
+            disabled={pushBusy}
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/15 px-3.5 py-2 text-xs font-medium text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25 disabled:opacity-60"
           >
             {pushBusy
               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : pushEnabled
-                ? <BellRing className="h-3.5 w-3.5" />
-                : <BellOff className="h-3.5 w-3.5" />
+              : <BellRing className="h-3.5 w-3.5" />
             }
             {pushEnabled ? "Notifications enabled" : "Enable notifications"}
           </button>
