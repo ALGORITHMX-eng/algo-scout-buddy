@@ -16,12 +16,14 @@ Deno.serve(async (req) => {
 
     const { user_id, job_id, instruction, current_resume, current_cover_letter } = await req.json();
 
-    if (!user_id || !instruction) {
-      return new Response(JSON.stringify({ error: "user_id and instruction required" }), {
+    if (!user_id) {
+      return new Response(JSON.stringify({ error: "user_id required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const resolvedInstruction = instruction || "Generate a tailored resume and cover letter for this job.";
 
     const { data: job } = await supabase
       .from("jobs")
@@ -37,7 +39,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "gpt-4o",
-        max_tokens: 2000,
+        max_tokens: 4000,
         response_format: { type: "json_object" },
         messages: [
           {
@@ -75,7 +77,7 @@ Rules:
           {
             role: "user",
             content: `JOB: ${job?.company} — ${job?.role}
-JOB DESCRIPTION: ${(job?.raw_text || "").slice(0, 1000)}
+JOB DESCRIPTION: ${(job?.raw_text || "").slice(0, 3000)}
 
 CURRENT RESUME:
 ${JSON.stringify(current_resume, null, 2)}
@@ -83,7 +85,7 @@ ${JSON.stringify(current_resume, null, 2)}
 CURRENT COVER LETTER:
 ${current_cover_letter}
 
-INSTRUCTION: ${instruction}`,
+INSTRUCTION: ${resolvedInstruction}`,
           },
         ],
       }),
@@ -124,7 +126,7 @@ INSTRUCTION: ${instruction}`,
     );
 
   } catch (e) {
-    console.error("resume-tweak error:", e);
+    console.error("generate-docs error:", e);
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

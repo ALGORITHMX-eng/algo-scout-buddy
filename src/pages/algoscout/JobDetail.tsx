@@ -340,8 +340,8 @@ function TweakChat({
           user_id: user.id,
           job_id: job.id,
           instruction: msg,
-          current_resume: resumeData,
-          current_cover_letter: coverLetter,
+          current_resume: null,
+          current_cover_letter: "",
           mode: "tweak",
         },
       });

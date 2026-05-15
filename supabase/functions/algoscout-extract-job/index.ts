@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "gpt-4o",
-        max_tokens: 2000,
+        max_tokens: 4000,
         response_format: { type: "json_object" },
         messages: [
           {
@@ -105,7 +105,7 @@ Location: ${profile.location || ""}
 Work Preference: ${profile.work_preference || "remote"}
 
 JOB PAGE CONTENT:
-${rawText.slice(0, 3000)}
+${rawText.slice(0, 6000)}
 
 Return ONLY this JSON:
 {
