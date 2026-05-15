@@ -9,6 +9,7 @@ import { ScorePill } from "@/components/algoscout/ScorePill";
 import { CoverLetterDoc } from "@/components/algoscout/CoverLetterDoc";
 import { NotesPanel } from "@/components/algoscout/NotesPanel";
 import { TagEditor } from "@/components/algoscout/TagEditor";
+import { ScoreBreakdown } from "@/components/algoscout/ScoreBreakdown";
 import { downloadResumePDF } from "@/components/algoscout/ResumePDF";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -57,7 +58,6 @@ function AIBubble({ message, onDone }: { message: string; onDone?: () => void })
 
   return (
     <div className="flex items-start gap-3">
-      {/* Avatar */}
       <div className="flex-shrink-0 h-8 w-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
         <span className="text-sm">🤖</span>
       </div>
@@ -73,7 +73,6 @@ function AIBubble({ message, onDone }: { message: string; onDone?: () => void })
 function ResumePreview({ data }: { data: ResumeData }) {
   return (
     <div className="rounded-xl border border-border bg-card p-6 font-mono text-sm space-y-4">
-      {/* Header */}
       <div className="text-center border-b border-border pb-4">
         <div className="text-lg font-bold text-foreground tracking-wide">{data.name}</div>
         <div className="mt-1 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -85,7 +84,6 @@ function ResumePreview({ data }: { data: ResumeData }) {
         </div>
       </div>
 
-      {/* Summary */}
       {data.summary && (
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-foreground border-b border-foreground/20 pb-1 mb-2">Professional Summary</div>
@@ -93,7 +91,6 @@ function ResumePreview({ data }: { data: ResumeData }) {
         </div>
       )}
 
-      {/* Skills */}
       {data.skills?.length > 0 && (
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-foreground border-b border-foreground/20 pb-1 mb-2">Technical Skills</div>
@@ -101,7 +98,6 @@ function ResumePreview({ data }: { data: ResumeData }) {
         </div>
       )}
 
-      {/* Experience */}
       {data.experience?.length > 0 && (
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-foreground border-b border-foreground/20 pb-1 mb-2">Experience</div>
@@ -127,7 +123,6 @@ function ResumePreview({ data }: { data: ResumeData }) {
         </div>
       )}
 
-      {/* Projects */}
       {data.projects?.length > 0 && (
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-foreground border-b border-foreground/20 pb-1 mb-2">Projects</div>
@@ -143,7 +138,6 @@ function ResumePreview({ data }: { data: ResumeData }) {
         </div>
       )}
 
-      {/* Education */}
       {data.education && (
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-foreground border-b border-foreground/20 pb-1 mb-2">Education</div>
@@ -177,18 +171,13 @@ function GeneratingSkeleton({ label }: { label: string }) {
 }
 
 // ─── Launch Pad ───────────────────────────────────────────────────────────────
-function LaunchPad({
-  job, resumeData, user,
-}: {
-  job: any; resumeData: ResumeData | null; user: any;
-}) {
+function LaunchPad({ job, resumeData, user }: { job: any; resumeData: ResumeData | null; user: any }) {
   const [launchState, setLaunchState] = useState<LaunchState>("idle");
   const [credits, setCredits] = useState<number | null>(null);
   const [bubbleMsg, setBubbleMsg] = useState("");
   const [showBubble, setShowBubble] = useState(false);
   const [bubbleDone, setBubbleDone] = useState(false);
 
-  // Fetch user credits
   useEffect(() => {
     if (!user) return;
     supabase.from("profiles").select("auto_apply_credits").eq("user_id", user.id).single()
@@ -197,26 +186,17 @@ function LaunchPad({
 
   const handleAutoApply = async () => {
     if (credits === null) return;
-
     if (credits <= 0) {
       setLaunchState("no_credits");
       setBubbleMsg("Ah, you're out of auto-apply credits. Top up and I'll fire this application for you 👇");
-      setShowBubble(true);
-      setBubbleDone(false);
-      return;
+      setShowBubble(true); setBubbleDone(false); return;
     }
-
     setLaunchState("applying");
     setBubbleMsg("Say less — locking in your application right now...");
-    setShowBubble(true);
-    setBubbleDone(false);
-
+    setShowBubble(true); setBubbleDone(false);
     try {
-      const { data, error } = await supabase.functions.invoke("apply", {
-        body: { job_id: job.id, user_id: user.id },
-      });
+      const { data, error } = await supabase.functions.invoke("apply", { body: { job_id: job.id, user_id: user.id } });
       if (error || (data as any)?.error) throw new Error((data as any)?.error || error?.message);
-
       setLaunchState("done");
       setBubbleMsg("Application fired! You're in the running. I'll let you know if anything comes back 🚀");
       setCredits((c) => (c !== null ? c - 1 : null));
@@ -232,14 +212,11 @@ function LaunchPad({
     try {
       await downloadResumePDF(resumeData, `${job.company}_${job.role}_Resume.pdf`);
       toast.success("Resume downloaded!");
-    } catch {
-      toast.error("Failed to download PDF");
-    }
+    } catch { toast.error("Failed to download PDF"); }
   };
 
   return (
     <section className="rounded-xl border border-border bg-card overflow-hidden">
-      {/* Header */}
       <div className="border-b border-border bg-emerald-500/5 px-5 py-3 flex items-center gap-2">
         <Zap className="h-4 w-4 text-emerald-500" />
         <span className="text-sm font-semibold text-foreground">Launch pad</span>
@@ -249,56 +226,30 @@ function LaunchPad({
           </span>
         )}
       </div>
-
       <div className="p-5 space-y-4">
-        {/* AI bubble */}
-        {showBubble && (
-          <AIBubble
-            message={bubbleMsg}
-            onDone={() => setBubbleDone(true)}
-          />
-        )}
-
-        {/* Initial state message */}
+        {showBubble && <AIBubble message={bubbleMsg} onDone={() => setBubbleDone(true)} />}
         {!showBubble && launchState === "idle" && (
-          <AIBubble
-            message={
-              credits === 0
-                ? "Everything looks great. Get some credits and I'll fire this application for you."
-                : "Everything's locked and loaded. Want me to fire this application? 🎯"
-            }
-          />
+          <AIBubble message={credits === 0
+            ? "Everything looks great. Get some credits and I'll fire this application for you."
+            : "Everything's locked and loaded. Want me to fire this application? 🎯"} />
         )}
-
-        {/* Actions */}
         <div className="flex flex-wrap gap-3 pt-1">
-          {/* Download PDF — always available */}
-          <button
-            onClick={handleDownload}
-            disabled={!resumeData}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-40"
-          >
+          <button onClick={handleDownload} disabled={!resumeData}
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-40">
             <Download className="h-4 w-4" /> Download Resume PDF
           </button>
-
-          {/* Auto apply or buy credits */}
           {launchState === "done" ? (
             <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30">
               <Check className="h-4 w-4" /> Application sent!
             </div>
           ) : launchState === "no_credits" && bubbleDone ? (
-            <button
-              onClick={() => window.location.href = "/algoscout/settings?tab=credits"}
-              className="inline-flex items-center gap-2 rounded-lg bg-amber-500/15 px-4 py-2.5 text-sm font-medium text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30 transition hover:bg-amber-500/25"
-            >
+            <button onClick={() => window.location.href = "/algoscout/settings?tab=credits"}
+              className="inline-flex items-center gap-2 rounded-lg bg-amber-500/15 px-4 py-2.5 text-sm font-medium text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30 transition hover:bg-amber-500/25">
               <CreditCard className="h-4 w-4" /> Buy auto-apply credits
             </button>
           ) : (
-            <button
-              onClick={handleAutoApply}
-              disabled={launchState === "applying" || credits === null}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:opacity-60"
-            >
+            <button onClick={handleAutoApply} disabled={launchState === "applying" || credits === null}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:opacity-60">
               {launchState === "applying"
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> Applying...</>
                 : <><Zap className="h-4 w-4" /> Auto-Apply</>}
@@ -311,15 +262,9 @@ function LaunchPad({
 }
 
 // ─── Tweak Chat ───────────────────────────────────────────────────────────────
-function TweakChat({
-  job, resumeData, coverLetter, onResumeUpdate, onCoverUpdate, user,
-}: {
-  job: any;
-  resumeData: ResumeData | null;
-  coverLetter: string;
-  onResumeUpdate: (data: ResumeData) => void;
-  onCoverUpdate: (text: string) => void;
-  user: any;
+function TweakChat({ job, resumeData, coverLetter, onResumeUpdate, onCoverUpdate, user }: {
+  job: any; resumeData: ResumeData | null; coverLetter: string;
+  onResumeUpdate: (data: ResumeData) => void; onCoverUpdate: (text: string) => void; user: any;
 }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -333,36 +278,18 @@ function TweakChat({
     setInput("");
     setMessages((prev) => [...prev, { role: "user", text: msg }]);
     setLoading(true);
-
     try {
       const { data, error } = await supabase.functions.invoke("resume-tweak", {
-        body: {
-          user_id: user.id,
-          job_id: job.id,
-          instruction: msg,
-          current_resume: null,
-          current_cover_letter: "",
-          mode: "tweak",
-        },
+        body: { user_id: user.id, job_id: job.id, instruction: msg, current_resume: resumeData, current_cover_letter: coverLetter, mode: "tweak" },
       });
       if (error) throw error;
-
       const updated = data as any;
       if (updated.resume) onResumeUpdate(updated.resume);
       if (updated.cover_letter) onCoverUpdate(updated.cover_letter);
-
-      setMessages((prev) => [
-        ...prev,
-        { role: "ai", text: updated.message || "Done — I've updated the docs based on your instruction." }
-      ]);
-    } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "ai", text: "Couldn't apply that tweak. Try rephrasing or try again." }
-      ]);
-    } finally {
-      setLoading(false);
-    }
+      setMessages((prev) => [...prev, { role: "ai", text: updated.message || "Done — I've updated the docs based on your instruction." }]);
+    } catch {
+      setMessages((prev) => [...prev, { role: "ai", text: "Couldn't apply that tweak. Try rephrasing or try again." }]);
+    } finally { setLoading(false); }
   };
 
   return (
@@ -371,42 +298,27 @@ function TweakChat({
         <h2 className="text-sm font-semibold text-foreground">Tweak with AI</h2>
         <p className="text-[11px] text-muted-foreground mt-0.5">Tell me what to change — I'll update both docs live</p>
       </div>
-
-      {/* Messages */}
       <div className="px-5 py-4 space-y-3 max-h-60 overflow-y-auto">
         {messages.map((m, i) => (
           m.role === "ai"
             ? <AIBubble key={i} message={m.text} />
-            : (
-              <div key={i} className="flex justify-end">
-                <div className="rounded-2xl rounded-tr-none bg-emerald-500/15 border border-emerald-500/20 px-4 py-2.5 text-sm text-foreground max-w-xs">
-                  {m.text}
-                </div>
+            : <div key={i} className="flex justify-end">
+                <div className="rounded-2xl rounded-tr-none bg-emerald-500/15 border border-emerald-500/20 px-4 py-2.5 text-sm text-foreground max-w-xs">{m.text}</div>
               </div>
-            )
         ))}
         {loading && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" />
-            Updating your docs...
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" /> Updating your docs...
           </div>
         )}
       </div>
-
-      {/* Input */}
       <div className="border-t border-border p-3 flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+        <input value={input} onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
           placeholder="e.g. make it denser, emphasize Python, shorter summary..."
-          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || loading}
-          className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-3 py-2 text-white transition hover:bg-emerald-600 disabled:opacity-50"
-        >
+          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500/50" />
+        <button onClick={handleSend} disabled={!input.trim() || loading}
+          className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-3 py-2 text-white transition hover:bg-emerald-600 disabled:opacity-50">
           <Send className="h-4 w-4" />
         </button>
       </div>
@@ -429,77 +341,48 @@ export default function AlgoJobDetail() {
   const [resumeReady, setResumeReady] = useState(false);
   const [coverReady, setCoverReady] = useState(false);
 
-  // Load job
   useEffect(() => {
     if (!id || !user) return;
     (async () => {
       const { data, error } = await supabase.from("jobs").select("*").eq("id", id).single();
       if (error || !data) { setJob(null); setLoading(false); return; }
       setJob(data);
-
-      // If already generated, load from job record
       if (data.resume_notes) {
         try {
-          const parsed = typeof data.resume_notes === "string"
-            ? JSON.parse(data.resume_notes) : data.resume_notes;
-          setResumeData(parsed);
-          setResumeReady(true);
+          const parsed = typeof data.resume_notes === "string" ? JSON.parse(data.resume_notes) : data.resume_notes;
+          setResumeData(parsed); setResumeReady(true);
         } catch {}
       }
-      if (data.cover_letter_notes) {
-        setCoverLetter(data.cover_letter_notes);
-        setCoverReady(true);
-      }
-
+      if (data.cover_letter_notes) { setCoverLetter(data.cover_letter_notes); setCoverReady(true); }
       setLoading(false);
     })();
   }, [id, user]);
 
-  // Auto-generate if coming from ?generate=true and not already generated
   useEffect(() => {
     if (!job || !user) return;
-    const shouldGenerate = searchParams.get("generate") === "true";
-    if (shouldGenerate && !job.resume_notes) {
-      handleGenerate();
-    }
+    if (searchParams.get("generate") === "true" && !job.resume_notes) handleGenerate();
   }, [job, user]);
 
   const handleGenerate = async () => {
     if (!user || !job) return;
-    setGenState("generating");
-    setResumeReady(false);
-    setCoverReady(false);
-
+    setGenState("generating"); setResumeReady(false); setCoverReady(false);
     try {
       const { data, error } = await supabase.functions.invoke("generate-docs", {
-        body: { job_id: job.id, user_id: user.id },
+        body: { job_id: job.id, user_id: user.id, current_resume: null, current_cover_letter: "" },
       });
       if (error) throw error;
-
       const result = data as any;
-
       if (result.resume) {
         setResumeData(result.resume);
-        // Small delay so resume appears first, then cover letter — streaming feel
         setTimeout(() => {
           setResumeReady(true);
-          if (result.coverLetter) {
-            setTimeout(() => {
-              setCoverLetter(result.coverLetter);
-              setCoverReady(true);
-              setGenState("done");
-            }, 800);
-          } else {
-            setGenState("done");
-          }
+          if (result.cover_letter) {
+            setTimeout(() => { setCoverLetter(result.cover_letter); setCoverReady(true); setGenState("done"); }, 800);
+          } else { setGenState("done"); }
         }, 400);
-      } else {
-        setGenState("error");
-      }
+      } else { setGenState("error"); }
     } catch (err: any) {
-      console.error(err);
-      setGenState("error");
-      toast.error("Generation failed — try again");
+      console.error(err); setGenState("error"); toast.error("Generation failed — try again");
     }
   };
 
@@ -509,31 +392,32 @@ export default function AlgoJobDetail() {
     setJob({ ...job, status });
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background text-foreground">
-        <AlgoNavbar />
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-        </div>
-      </div>
-    );
-  }
+  // Parse score breakdown from job
+  const breakdown = (() => {
+    if (!job?.score_breakdown) return null;
+    try {
+      return typeof job.score_breakdown === "string"
+        ? JSON.parse(job.score_breakdown)
+        : job.score_breakdown;
+    } catch { return null; }
+  })();
 
-  if (!job) {
-    return (
-      <div className="min-h-screen bg-background text-foreground">
-        <AlgoNavbar />
-        <div className="mx-auto max-w-3xl px-5 py-16 text-center">
-          <p className="text-muted-foreground">Job not found.</p>
-          <button onClick={() => navigate("/algoscout")}
-            className="mt-3 inline-block text-emerald-600 dark:text-emerald-400 hover:underline text-sm">
-            Back to dashboard
-          </button>
-        </div>
+  if (loading) return (
+    <div className="min-h-screen bg-background text-foreground">
+      <AlgoNavbar />
+      <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div>
+    </div>
+  );
+
+  if (!job) return (
+    <div className="min-h-screen bg-background text-foreground">
+      <AlgoNavbar />
+      <div className="mx-auto max-w-3xl px-5 py-16 text-center">
+        <p className="text-muted-foreground">Job not found.</p>
+        <button onClick={() => navigate("/algoscout")} className="mt-3 inline-block text-emerald-600 dark:text-emerald-400 hover:underline text-sm">Back to dashboard</button>
       </div>
-    );
-  }
+    </div>
+  );
 
   const docsGenerated = resumeReady && coverReady;
 
@@ -542,28 +426,19 @@ export default function AlgoJobDetail() {
       <AlgoNavbar />
       <main className="mx-auto max-w-3xl px-5 py-8 space-y-4">
 
-        {/* Back */}
         <button onClick={() => navigate("/algoscout")}
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to dashboard
         </button>
 
-        {/* Job header card */}
+        {/* Job header */}
         <div className="rounded-xl border border-border bg-card p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-xs font-medium uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                {job.company}
-              </div>
-              <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-foreground">
-                {job.role}
-              </h1>
+              <div className="text-xs font-medium uppercase tracking-wider text-emerald-600 dark:text-emerald-400">{job.company}</div>
+              <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-foreground">{job.role}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                {job.location && (
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin className="h-3 w-3" /> {job.location}
-                  </span>
-                )}
+                {job.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" /> {job.location}</span>}
                 <span>· Found {new Date(job.found_at).toLocaleDateString()}</span>
                 <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
                   job.status === "approved" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
@@ -576,8 +451,6 @@ export default function AlgoJobDetail() {
             </div>
             <ScorePill score={Number(job.score)} size="lg" job={job} />
           </div>
-
-          {/* Actions */}
           <div className="mt-5 flex flex-wrap gap-2">
             {job.status !== "approved" && (
               <button onClick={() => setStatus("approved")}
@@ -606,11 +479,16 @@ export default function AlgoJobDetail() {
         </section>
         <NotesPanel jobId={job.id} />
 
-        {/* Why this score */}
-        <section className="rounded-xl border border-border bg-card p-5">
-          <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Why this score</h2>
-          <p className="text-sm leading-relaxed text-foreground/85">{job.score_reason || job.reason || "No reason provided."}</p>
-        </section>
+        {/* Score breakdown — replaces "Why this score" */}
+        {breakdown ? (
+          <ScoreBreakdown breakdown={breakdown} cumulative={Number(job.score)} />
+        ) : (
+          // Fallback for old jobs without breakdown data
+          <section className="rounded-xl border border-border bg-card p-5">
+            <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Why this score</h2>
+            <p className="text-sm leading-relaxed text-foreground/85">{job.score_reason || job.reason || "No reason provided."}</p>
+          </section>
+        )}
 
         {/* Job description */}
         <section className="rounded-xl border border-border bg-card p-5">
@@ -620,10 +498,8 @@ export default function AlgoJobDetail() {
           </p>
         </section>
 
-        {/* ── Generation section ── */}
+        {/* Generation section */}
         <div className="space-y-4">
-
-          {/* Generate button — show if not yet generated */}
           {genState === "idle" && !docsGenerated && (
             <div className="rounded-xl border border-dashed border-border bg-card p-6 flex flex-col items-center gap-3 text-center">
               <div className="text-sm font-medium text-foreground">Ready to generate your tailored docs?</div>
@@ -645,10 +521,8 @@ export default function AlgoJobDetail() {
             </div>
           )}
 
-          {/* Resume */}
-          {genState === "generating" && !resumeReady && (
-            <GeneratingSkeleton label="Writing your tailored resume..." />
-          )}
+          {genState === "generating" && !resumeReady && <GeneratingSkeleton label="Writing your tailored resume..." />}
+
           {resumeReady && resumeData && (
             <section className="space-y-2">
               <div className="flex items-center justify-between px-1">
@@ -662,42 +536,23 @@ export default function AlgoJobDetail() {
             </section>
           )}
 
-          {/* Cover letter */}
-          {resumeReady && !coverReady && (
-            <GeneratingSkeleton label="Writing your cover letter..." />
-          )}
+          {resumeReady && !coverReady && <GeneratingSkeleton label="Writing your cover letter..." />}
+
           {coverReady && coverLetter && (
             <section className="space-y-2">
               <div className="px-1">
                 <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Cover Letter</h2>
               </div>
-              <CoverLetterDoc
-  body={coverLetter}
-  applicantName={resumeData?.name}
-  company={job.company}
-  role={job.role}
-  date={new Date(job.found_at).toLocaleDateString()}
-/>
-              
+              <CoverLetterDoc body={coverLetter} company={job.company} />
             </section>
           )}
 
-          {/* Tweak chat — show after docs are ready */}
           {docsGenerated && (
-            <TweakChat
-              job={job}
-              resumeData={resumeData}
-              coverLetter={coverLetter}
-              onResumeUpdate={setResumeData}
-              onCoverUpdate={setCoverLetter}
-              user={user}
-            />
+            <TweakChat job={job} resumeData={resumeData} coverLetter={coverLetter}
+              onResumeUpdate={setResumeData} onCoverUpdate={setCoverLetter} user={user} />
           )}
 
-          {/* Launch pad — show after docs are ready */}
-          {docsGenerated && (
-            <LaunchPad job={job} resumeData={resumeData} user={user} />
-          )}
+          {docsGenerated && <LaunchPad job={job} resumeData={resumeData} user={user} />}
         </div>
       </main>
     </div>
