@@ -178,6 +178,8 @@ Return ONLY this JSON:
         raw_text: rawText,
         score: extracted.score || 0,
         score_reason: extracted.reason || "",
+        resume_notes: JSON.stringify(extracted.resume || ""),   
+        cover_letter_notes: extracted.coverLetter || "",  
         status: "pending",
         found_at: new Date().toISOString(),
       })

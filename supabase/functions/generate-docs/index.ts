@@ -25,11 +25,28 @@ Deno.serve(async (req) => {
 
     const resolvedInstruction = instruction || "Generate a tailored resume and cover letter for this job.";
 
+    // Fetch job
     const { data: job } = await supabase
       .from("jobs")
       .select("company, role, raw_text")
       .eq("id", job_id)
       .single();
+
+    // Fetch real user profile — never hallucinate candidate info
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", user_id)
+      .single();
+
+    if (!profile) {
+      return new Response(JSON.stringify({ error: "Profile not found. Please complete your profile first." }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
     const res = await fetch("https://models.inference.ai.azure.com/chat/completions", {
       method: "POST",
@@ -44,7 +61,7 @@ Deno.serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an expert resume and cover letter editor. Apply the user's instruction precisely to their documents.
+            content: `You are an expert resume and cover letter writer. You ONLY use the exact candidate information provided. You NEVER invent jobs, companies, degrees, dates, or credentials that are not in the profile.
 
 Return ONLY valid JSON in this exact shape:
 {
@@ -64,26 +81,67 @@ Return ONLY valid JSON in this exact shape:
     "education": { "degree": "", "school": "", "year": "", "achievements": "" }
   },
   "cover_letter": "full cover letter text",
-  "message": "one sentence confirming what you changed"
+  "message": "one sentence confirming what you did"
 }
 
 Rules:
-- Keep all existing data intact unless the instruction targets it
-- Never invent new jobs, degrees, or credentials
+- ONLY use data from the CANDIDATE PROFILE — never invent anything not listed there
+- targetTitle: read the job description and the candidate background carefully, then pick the most fitting professional title — do NOT just copy the job title verbatim, use judgment to find the best match
+- Tailor the summary and bullet points to highlight what matters most for this specific job
+- Keep all real experience, projects, and education exactly as given in the profile
+- skills: return only the skills from the profile that are most relevant to this job, ordered by relevance
+- cover_letter must follow this EXACT format (replace placeholders with real data):
+
+[Candidate Full Name]
+[Today's Date]
+Hiring Team
+[Company Name]
+
+Dear Hiring Team at [Company Name],
+
+[Paragraph 1: Express genuine excitement about the specific role + one sentence on who the candidate is]
+[Paragraph 2: 2-3 specific real achievements from their profile that directly match the job requirements — NO invented experience]
+[Paragraph 3: Why this specific company excites the candidate — reference something real from the job description]
+[Paragraph 4: Confident close + call to action]
+
+Best regards,
+[Full Name]
+[Location]
+[Email] | [Phone]
+LinkedIn: [linkedin] | GitHub: [github]
+
 - If instruction is only about resume, return cover_letter unchanged
 - If instruction is only about cover letter, return resume unchanged
 - Page cap: 3+ jobs = max 3 bullets each, 2 jobs = max 4 each, 1 job = max 6`,
           },
           {
             role: "user",
-            content: `JOB: ${job?.company} — ${job?.role}
-JOB DESCRIPTION: ${(job?.raw_text || "").slice(0, 3000)}
+            content: `TODAY'S DATE: ${today}
 
-CURRENT RESUME:
-${JSON.stringify(current_resume, null, 2)}
+JOB: ${job?.company} — ${job?.role}
+JOB DESCRIPTION:
+${(job?.raw_text || "").slice(0, 3000)}
+
+CANDIDATE PROFILE (use ONLY this data — never invent anything):
+Name: ${profile.full_name}
+Email: ${profile.email}
+Phone: ${profile.phone || ""}
+Location: ${profile.location || ""}
+LinkedIn: ${profile.linkedin || ""}
+GitHub: ${profile.github || ""}
+Portfolio: ${profile.portfolio || ""}
+Target Titles: ${profile.preferred_titles?.join(", ") || ""}
+Years of Experience: ${profile.years_experience || 0}
+Skills: ${profile.skills?.join(", ") || ""}
+Experience Summary: ${profile.experience_summary || ""}
+Full Resume Text (extract all experience, projects, education from here — this is the source of truth):
+${profile.raw_resume_text || ""}
+
+CURRENT RESUME (if tweaking, use this as base — otherwise generate fresh from profile):
+${current_resume ? JSON.stringify(current_resume, null, 2) : "None — generate from scratch using profile above"}
 
 CURRENT COVER LETTER:
-${current_cover_letter}
+${current_cover_letter || "None — generate from scratch"}
 
 INSTRUCTION: ${resolvedInstruction}`,
           },
@@ -120,7 +178,7 @@ INSTRUCTION: ${resolvedInstruction}`,
       JSON.stringify({
         resume: result.resume,
         cover_letter: result.cover_letter,
-        message: result.message || "Done — updated your docs.",
+        message: result.message || "Done — your tailored docs are ready.",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
