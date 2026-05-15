@@ -107,6 +107,7 @@ INSTRUCTION: ${instruction}`,
       });
     }
 
+    // Save updated docs back to job
     if (job_id) {
       await supabase.from("jobs").update({
         resume_notes: JSON.stringify(result.resume),

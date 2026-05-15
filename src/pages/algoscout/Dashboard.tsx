@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ExternalLink, Check, X, Inbox, Clock, CheckCircle2,
-  XCircle, BellRing, Loader2, Search, MapPin,
+  XCircle, BellRing, BellOff, Loader2, MapPin,
 } from "lucide-react";
 import { AlgoNavbar } from "@/components/algoscout/Navbar";
 import { ScorePill } from "@/components/algoscout/ScorePill";
@@ -80,13 +80,8 @@ function JobPanel({
 }) {
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Sliding panel */}
       <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-border bg-card shadow-2xl animate-in slide-in-from-right duration-300">
-
-        {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div className="min-w-0">
             <div className="text-xs font-medium uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
@@ -115,7 +110,6 @@ function JobPanel({
           </div>
         </div>
 
-        {/* Why it matched */}
         {job.score_reason && (
           <div className="border-b border-border bg-emerald-500/5 px-5 py-3">
             <div className="mb-1 text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
@@ -125,21 +119,19 @@ function JobPanel({
           </div>
         )}
 
-        {/* Scrollable description */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           <div className="mb-3 text-[10px] uppercase tracking-wider text-muted-foreground">
             Job description
           </div>
           {(job.raw_text || job.description) ? (
-  <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/85">
-    {job.raw_text || job.description}
-  </p>
-) : (
-  <p className="text-sm italic text-muted-foreground">No description available.</p>
-)}
+            <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/85">
+              {job.raw_text || job.description}
+            </p>
+          ) : (
+            <p className="text-sm italic text-muted-foreground">No description available.</p>
+          )}
         </div>
 
-        {/* Footer */}
         <div className="space-y-2 border-t border-border p-4">
           {job.job_url && (
             <a
@@ -278,7 +270,7 @@ function SwipeReview({ pending, onApprove, onReject }: {
       <div className="flex h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border text-center">
         <CheckCircle2 className="mb-2 h-8 w-8 text-emerald-500/50" />
         <p className="text-sm text-muted-foreground">All caught up — no pending leads.</p>
-        <p className="mt-1 text-xs text-muted-foreground/60">Hit Find Jobs to scan for new matches.</p>
+        <p className="mt-1 text-xs text-muted-foreground/60">New leads will appear here automatically.</p>
       </div>
     );
   }
@@ -341,8 +333,8 @@ export default function AlgoDashboard() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("All");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
-  const [scanning, setScanning] = useState(false);
   const [panelJob, setPanelJob] = useState<Job | null>(null);
   const [approving, setApproving] = useState<string | null>(null);
 
@@ -356,6 +348,10 @@ export default function AlgoDashboard() {
   useEffect(() => {
     const load = async () => { setLoading(true); await fetchJobs(); setLoading(false); };
     load();
+    // Check if push already granted
+    if ("Notification" in window && Notification.permission === "granted") {
+      setPushEnabled(true);
+    }
   }, [user]);
 
   const stats = useMemo(() => ({
@@ -373,31 +369,19 @@ export default function AlgoDashboard() {
   }), [stats]);
 
   const reviewed = stats.approved + stats.rejected;
+
   const pendingJobs = useMemo(
     () => jobs.filter((j) => j.status === "pending").sort((a, b) => b.score - a.score),
     [jobs],
   );
+
+  // FIX: "All" tab shows only pending — approved/rejected leave the leads table
+  // but still count in Total Leads stat card
   const visible = useMemo(() => {
-    if (filter === "All") return jobs;
+    if (filter === "All") return jobs.filter((j) => j.status === "pending");
     return jobs.filter((j) => j.status === filter);
   }, [jobs, filter]);
 
-  const handleFindJobs = async () => {
-    if (!user) return;
-    setScanning(true);
-    try {
-      const { error } = await supabase.functions.invoke("trigger-scout", { body: {} });
-      if (error) throw error;
-      toast.success("Scanning in background — new jobs will appear shortly!");
-      setTimeout(async () => { await fetchJobs(); }, 30000);
-    } catch (err: any) {
-      toast.error(err?.message || "Scan failed");
-    } finally {
-      setScanning(false);
-    }
-  };
-
-  // Approve: update status only → navigate to Job Detail with ?generate=true
   const handleApprove = async (jobId: string) => {
     if (!user) return;
     setApproving(jobId);
@@ -434,13 +418,23 @@ export default function AlgoDashboard() {
     setSelected(new Set());
     toast.success(`${ids.length} jobs marked as ${status}`);
   };
+
   const handleEnablePush = async () => {
+    if (pushEnabled) return;
     setPushBusy(true);
     try {
       const res = await enablePushNotifications();
-      if (res.ok) toast.success(res.message); else toast.error(res.message);
-    } catch (e: any) { toast.error(e?.message ?? "Failed to enable notifications."); }
-    finally { setPushBusy(false); }
+      if (res.ok) {
+        setPushEnabled(true);
+        toast.success(res.message);
+      } else {
+        toast.error(res.message);
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to enable notifications.");
+    } finally {
+      setPushBusy(false);
+    }
   };
 
   if (authLoading || loading) {
@@ -458,7 +452,6 @@ export default function AlgoDashboard() {
     <div className="min-h-screen bg-background text-foreground">
       <AlgoNavbar />
 
-      {/* Side panel */}
       {panelJob && (
         <JobPanel
           job={panelJob}
@@ -477,18 +470,25 @@ export default function AlgoDashboard() {
             <h1 className="font-display text-2xl font-semibold tracking-tight">Dashboard</h1>
             <p className="text-sm text-muted-foreground">AI-scored job leads, ready for your review.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={handleFindJobs} disabled={scanning}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600 disabled:opacity-60">
-              {scanning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Scanning…</>
-                : <><Search className="h-3.5 w-3.5" />Find Jobs</>}
-            </button>
-            <button onClick={handleEnablePush} disabled={pushBusy}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/15 px-3.5 py-2 text-xs font-medium text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25 disabled:opacity-60">
-              {pushBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellRing className="h-3.5 w-3.5" />}
-              Enable Notifications
-            </button>
-          </div>
+
+          {/* Notification bell — shows Enabled once activated */}
+          <button
+            onClick={handleEnablePush}
+            disabled={pushBusy || pushEnabled}
+            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-medium ring-1 transition
+              ${pushEnabled
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/30 cursor-default"
+                : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-60"
+              }`}
+          >
+            {pushBusy
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : pushEnabled
+                ? <BellRing className="h-3.5 w-3.5" />
+                : <BellOff className="h-3.5 w-3.5" />
+            }
+            {pushEnabled ? "Notifications enabled" : "Enable notifications"}
+          </button>
         </div>
 
         {/* Progress ring */}
@@ -594,7 +594,6 @@ export default function AlgoDashboard() {
                       {new Date(j.found_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3">
-                      {/* Opens side panel */}
                       <button onClick={() => setPanelJob(j)}
                         className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:underline">
                         Open <ExternalLink className="h-3 w-3" />
@@ -617,7 +616,7 @@ export default function AlgoDashboard() {
                 {visible.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                      {filter === "All" ? "No jobs yet — hit Find Jobs to start scouting." : "No jobs match this filter."}
+                      {filter === "All" ? "No pending leads — check Applied or Rejected tabs." : "No jobs match this filter."}
                     </td>
                   </tr>
                 )}

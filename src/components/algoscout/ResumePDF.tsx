@@ -1,18 +1,11 @@
 import {
-  Document,
-  Page,
-  Text,
-  View,
-  StyleSheet,
-  Link,
-  pdf,
+  Document, Page, Text, View, StyleSheet, Link, pdf,
 } from "@react-pdf/renderer";
 
 const colors = {
   primary: "#111111",
   secondary: "#444444",
   accent: "#2563eb",
-  border: "#cccccc",
   light: "#666666",
 };
 
@@ -25,38 +18,43 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     paddingHorizontal: 50,
   },
-  // Header
-  header: {
-    alignItems: "center",
-    marginBottom: 16,
-  },
+  header: { alignItems: "center", marginBottom: 14 },
   name: {
     fontSize: 22,
     fontFamily: "Helvetica-Bold",
     letterSpacing: 2,
-    marginBottom: 4,
+    marginBottom: 3,
+  },
+  targetTitle: {
+    fontSize: 10,
+    color: colors.secondary,
+    letterSpacing: 1,
+    marginBottom: 5,
+    textTransform: "uppercase",
   },
   contact: {
     fontSize: 9,
     color: colors.secondary,
     flexDirection: "row",
-    flexWrap: "wrap",
     justifyContent: "center",
-    gap: 6,
   },
   contactItem: {
     fontSize: 9,
     color: colors.secondary,
+    marginHorizontal: 3,
+  },
+  contactSep: {
+    fontSize: 9,
+    color: colors.light,
+    marginHorizontal: 1,
   },
   link: {
     fontSize: 9,
     color: colors.accent,
     textDecoration: "none",
+    marginHorizontal: 3,
   },
-  // Section
-  section: {
-    marginBottom: 12,
-  },
+  section: { marginBottom: 11 },
   sectionTitle: {
     fontSize: 10,
     fontFamily: "Helvetica-Bold",
@@ -65,77 +63,34 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1.5,
     borderBottomColor: colors.primary,
     paddingBottom: 2,
-    marginBottom: 8,
+    marginBottom: 7,
   },
-  // Experience
-  entryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 1,
-  },
-  entryTitle: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 10,
-  },
-  entryDate: {
-    fontSize: 9,
-    color: colors.light,
-  },
+  entryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 1 },
+  entryTitle: { fontFamily: "Helvetica-Bold", fontSize: 10 },
+  entryDate: { fontSize: 9, color: colors.light },
   entryCompany: {
-    fontSize: 9.5,
-    fontFamily: "Helvetica-Oblique",
-    color: colors.secondary,
-    marginBottom: 3,
+    fontSize: 9.5, fontFamily: "Helvetica-Oblique",
+    color: colors.secondary, marginBottom: 3,
   },
-  bullet: {
-    flexDirection: "row",
-    marginBottom: 2,
-    paddingLeft: 8,
-  },
-  bulletDot: {
-    fontSize: 9.5,
-    marginRight: 4,
-    color: colors.secondary,
-  },
-  bulletText: {
-    fontSize: 9.5,
-    flex: 1,
-    color: colors.primary,
-    lineHeight: 1.4,
-  },
-  entryBlock: {
-    marginBottom: 10,
-  },
-  // Projects
-  projectName: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 10,
-  },
-  projectDesc: {
-    fontSize: 9.5,
-    color: colors.secondary,
-  },
+  bullet: { flexDirection: "row", marginBottom: 2, paddingLeft: 8 },
+  bulletDot: { fontSize: 9.5, marginRight: 4, color: colors.secondary },
+  bulletText: { fontSize: 9.5, flex: 1, color: colors.primary, lineHeight: 1.4 },
+  entryBlock: { marginBottom: 9 },
+  projectRow: { flexDirection: "row", marginBottom: 1 },
+  projectName: { fontFamily: "Helvetica-Bold", fontSize: 10 },
+  projectSep: { fontSize: 9.5, color: colors.secondary, marginHorizontal: 3 },
+  projectDesc: { fontSize: 9.5, color: colors.secondary, flex: 1 },
   projectTech: {
-    fontSize: 9,
-    color: colors.light,
-    fontFamily: "Helvetica-Oblique",
-    marginTop: 1,
+    fontSize: 9, color: colors.light,
+    fontFamily: "Helvetica-Oblique", marginTop: 1, marginBottom: 5,
   },
-  // Summary
-  summary: {
-    fontSize: 9.5,
-    lineHeight: 1.6,
-    color: colors.primary,
-  },
-  // Skills
-  skills: {
-    fontSize: 9.5,
-    lineHeight: 1.8,
-    color: colors.primary,
-  },
+  summary: { fontSize: 9.5, lineHeight: 1.6, color: colors.primary },
+  skills: { fontSize: 9.5, lineHeight: 1.8, color: colors.primary },
+  eduRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 1 },
+  eduAchievement: { fontSize: 9, color: colors.light, fontFamily: "Helvetica-Oblique" },
 });
 
-type ResumeData = {
+export type ResumeData = {
   name: string;
   email: string;
   phone: string;
@@ -143,56 +98,38 @@ type ResumeData = {
   linkedin?: string;
   github?: string;
   portfolio?: string;
+  targetTitle?: string;
   summary: string;
-  experience: {
-    title: string;
-    company: string;
-    duration: string;
-    bullets: string[];
-  }[];
-  projects?: {
-    name: string;
-    description: string;
-    tech: string[];
-  }[];
+  experience: { title: string; company: string; duration: string; bullets: string[] }[];
+  projects?: { name: string; description: string; tech: string[] | string }[];
   skills: string[];
-  education: {
-    degree: string;
-    school: string;
-    year: string;
-  };
+  education: { degree: string; school: string; year: string; achievements?: string };
 };
+
+const safeTech = (tech: string[] | string | undefined): string => {
+  if (!tech) return "";
+  return Array.isArray(tech) ? tech.join(" · ") : tech;
+};
+
+const Sep = () => <Text style={styles.contactSep}> | </Text>;
 
 const ResumePDFDoc = ({ data }: { data: ResumeData }) => (
   <Document>
     <Page size="A4" style={styles.page}>
+
       {/* HEADER */}
       <View style={styles.header}>
         <Text style={styles.name}>{data.name}</Text>
+        {data.targetTitle && (
+          <Text style={styles.targetTitle}>{data.targetTitle}</Text>
+        )}
         <View style={styles.contact}>
-          <Text style={styles.contactItem}>{data.email}</Text>
-          <Text style={styles.contactItem}>|</Text>
-          <Text style={styles.contactItem}>{data.phone}</Text>
-          <Text style={styles.contactItem}>|</Text>
-          <Text style={styles.contactItem}>{data.location}</Text>
-          {data.linkedin && (
-            <>
-              <Text style={styles.contactItem}>|</Text>
-              <Link src={data.linkedin} style={styles.link}>LinkedIn</Link>
-            </>
-          )}
-          {data.github && (
-            <>
-              <Text style={styles.contactItem}>|</Text>
-              <Link src={data.github} style={styles.link}>GitHub</Link>
-            </>
-          )}
-          {data.portfolio && (
-            <>
-              <Text style={styles.contactItem}>|</Text>
-              <Link src={data.portfolio} style={styles.link}>Portfolio</Link>
-            </>
-          )}
+          {data.phone && <Text style={styles.contactItem}>{data.phone}</Text>}
+          {data.email && <><Sep /><Text style={styles.contactItem}>{data.email}</Text></>}
+          {data.location && <><Sep /><Text style={styles.contactItem}>{data.location}</Text></>}
+          {data.linkedin && <><Sep /><Link src={data.linkedin} style={styles.link}>LinkedIn</Link></>}
+          {data.github && <><Sep /><Link src={data.github} style={styles.link}>GitHub</Link></>}
+          {data.portfolio && <><Sep /><Link src={data.portfolio} style={styles.link}>Portfolio</Link></>}
         </View>
       </View>
 
@@ -201,6 +138,14 @@ const ResumePDFDoc = ({ data }: { data: ResumeData }) => (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Professional Summary</Text>
           <Text style={styles.summary}>{data.summary}</Text>
+        </View>
+      )}
+
+      {/* SKILLS */}
+      {data.skills?.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Technical Skills</Text>
+          <Text style={styles.skills}>{data.skills.join(" · ")}</Text>
         </View>
       )}
 
@@ -232,21 +177,14 @@ const ResumePDFDoc = ({ data }: { data: ResumeData }) => (
           <Text style={styles.sectionTitle}>Projects</Text>
           {data.projects.map((project, i) => (
             <View key={i} style={styles.entryBlock}>
-              <Text style={styles.projectName}>{project.name}</Text>
-              <Text style={styles.projectDesc}>{project.description}</Text>
-              <Text style={styles.projectTech}>
-                Tech: {project.tech?.join(", ")}
-              </Text>
+              <View style={styles.projectRow}>
+                <Text style={styles.projectName}>{project.name}</Text>
+                <Text style={styles.projectSep}> — </Text>
+                <Text style={styles.projectDesc}>{project.description}</Text>
+              </View>
+              <Text style={styles.projectTech}>{safeTech(project.tech)}</Text>
             </View>
           ))}
-        </View>
-      )}
-
-      {/* SKILLS */}
-      {data.skills?.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Skills</Text>
-          <Text style={styles.skills}>{data.skills.join(" · ")}</Text>
         </View>
       )}
 
@@ -259,15 +197,20 @@ const ResumePDFDoc = ({ data }: { data: ResumeData }) => (
               <Text style={styles.entryTitle}>{data.education.degree}</Text>
               <Text style={styles.entryDate}>{data.education.year}</Text>
             </View>
-            <Text style={styles.entryCompany}>{data.education.school}</Text>
+            <View style={styles.eduRow}>
+              <Text style={styles.entryCompany}>{data.education.school}</Text>
+              {data.education.achievements && (
+                <Text style={styles.eduAchievement}>{data.education.achievements}</Text>
+              )}
+            </View>
           </View>
         </View>
       )}
+
     </Page>
   </Document>
 );
 
-// Download function — call this from any button
 export const downloadResumePDF = async (data: ResumeData, filename?: string) => {
   const blob = await pdf(<ResumePDFDoc data={data} />).toBlob();
   const url = URL.createObjectURL(blob);

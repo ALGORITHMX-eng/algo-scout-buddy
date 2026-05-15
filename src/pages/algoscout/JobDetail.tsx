@@ -335,7 +335,7 @@ function TweakChat({
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke("algoscout-chat", {
+      const { data, error } = await supabase.functions.invoke("resume-tweak", {
         body: {
           user_id: user.id,
           job_id: job.id,
@@ -616,7 +616,7 @@ export default function AlgoJobDetail() {
         <section className="rounded-xl border border-border bg-card p-5">
           <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Job description</h2>
           <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/85">
-            job.raw_text || job.description || "No description available."
+            {job.raw_text || job.description || "No description available."}
           </p>
         </section>
 
@@ -672,11 +672,13 @@ export default function AlgoJobDetail() {
                 <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Cover Letter</h2>
               </div>
               <CoverLetterDoc
-                body={coverLetter}
-                company={job.company}
-                role={job.role}
-                date={new Date(job.found_at).toLocaleDateString()}
-              />
+  body={coverLetter}
+  applicantName={resumeData?.name}
+  company={job.company}
+  role={job.role}
+  date={new Date(job.found_at).toLocaleDateString()}
+/>
+              
             </section>
           )}
 
